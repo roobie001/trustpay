@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { ShieldCheck, Link2, Copy, Check, MessageCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatNaira } from "@/lib/format";
+import { NIGERIAN_BANKS } from "@/lib/banks";
 
 export default function Home() {
   const [itemTitle, setItemTitle] = useState("");
@@ -11,6 +12,8 @@ export default function Home() {
   const [deliveryFee, setDeliveryFee] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
+  const [sellerBank, setSellerBank] = useState("");
+  const [sellerAccountNumber, setSellerAccountNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -23,7 +26,13 @@ export default function Home() {
     const parsedAmount = Number(amount);
     const parsedDeliveryFee = deliveryFee ? Number(deliveryFee) : 0;
 
-    if (!itemTitle.trim() || !sellerName.trim() || !sellerPhone.trim()) {
+    if (
+      !itemTitle.trim() ||
+      !sellerName.trim() ||
+      !sellerPhone.trim() ||
+      !sellerBank.trim() ||
+      !sellerAccountNumber.trim()
+    ) {
       setError("Please fill in every field.");
       return;
     }
@@ -45,6 +54,8 @@ export default function Home() {
         delivery_fee: parsedDeliveryFee,
         seller_name: sellerName.trim(),
         seller_phone: sellerPhone.trim(),
+        seller_bank: sellerBank,
+        seller_account_number: sellerAccountNumber.trim(),
       })
       .select("id")
       .single();
@@ -64,6 +75,8 @@ export default function Home() {
     setDeliveryFee("");
     setSellerName("");
     setSellerPhone("");
+    setSellerBank("");
+    setSellerAccountNumber("");
     setShareUrl(null);
     setCopied(false);
   }
@@ -228,6 +241,41 @@ export default function Home() {
                   placeholder="e.g. 08012345678"
                   className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-zinc-700">
+                    Payout Bank
+                  </label>
+                  <select
+                    value={sellerBank}
+                    onChange={(e) => setSellerBank(e.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    <option value="" disabled>
+                      Select bank
+                    </option>
+                    {NIGERIAN_BANKS.map((bank) => (
+                      <option key={bank} value={bank}>
+                        {bank}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-zinc-700">
+                    Account Number
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={sellerAccountNumber}
+                    onChange={(e) => setSellerAccountNumber(e.target.value)}
+                    placeholder="0123456789"
+                    className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </div>
               </div>
 
               {error && (

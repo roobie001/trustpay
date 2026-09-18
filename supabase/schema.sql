@@ -10,6 +10,8 @@ create table if not exists escrow_orders (
   delivery_fee numeric not null default 0,
   seller_name text not null,
   seller_phone text not null,
+  seller_bank text,
+  seller_account_number text,
   buyer_name text,
   buyer_phone text,
   status text not null default 'PENDING_PAYMENT'
@@ -22,6 +24,10 @@ create table if not exists escrow_orders (
     )),
   created_at timestamptz not null default now()
 );
+
+-- Safe to re-run: adds the payout columns to a table created before they existed.
+alter table escrow_orders add column if not exists seller_bank text;
+alter table escrow_orders add column if not exists seller_account_number text;
 
 alter table escrow_orders enable row level security;
 

@@ -27,6 +27,8 @@ export type EscrowOrder = {
   delivery_fee: number;
   seller_name: string;
   seller_phone: string;
+  seller_bank: string | null;
+  seller_account_number: string | null;
   buyer_name: string | null;
   buyer_phone: string | null;
   status: EscrowStatus;

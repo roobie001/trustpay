@@ -2,9 +2,12 @@
 
 import { use, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import PaystackPop from "@paystack/inline-js";
 import { ShieldCheck, Loader2, PackageSearch } from "lucide-react";
 import { supabase, type EscrowOrder } from "@/lib/supabase";
 import { formatNaira } from "@/lib/format";
+
+const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
 export default function PayPage({
   params,
@@ -20,6 +23,7 @@ export default function PayPage({
 
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +48,7 @@ export default function PayPage({
     };
   }, [id]);
 
-  async function handlePay(e: FormEvent) {
+  function handlePay(e: FormEvent) {
     e.preventDefault();
     if (!order) return;
     setError(null);
@@ -53,28 +57,51 @@ export default function PayPage({
       setError("Please enter your name and phone number.");
       return;
     }
-
-    setPaying(true);
-
-    // Simulated checkout — swap for a real Paystack popup in production.
-    await new Promise((resolve) => setTimeout(resolve, 1400));
-
-    const { error: updateError } = await supabase
-      .from("escrow_orders")
-      .update({
-        buyer_name: buyerName.trim(),
-        buyer_phone: buyerPhone.trim(),
-        status: "HELD_IN_ESCROW",
-      })
-      .eq("id", order.id);
-
-    if (updateError) {
-      setPaying(false);
-      setError(updateError.message);
+    if (!buyerEmail.trim()) {
+      setError("Please enter your email address to continue.");
+      return;
+    }
+    if (!PAYSTACK_PUBLIC_KEY) {
+      setError("Payments aren't configured yet. Missing Paystack public key.");
       return;
     }
 
-    router.push(`/order/${order.id}`);
+    setPaying(true);
+
+    const total = Number(order.amount) + Number(order.delivery_fee || 0);
+    const paystack = new PaystackPop();
+
+    paystack.newTransaction({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: buyerEmail.trim(),
+      amount: Math.round(total * 100),
+      currency: "NGN",
+      metadata: {
+        order_id: order.id,
+        buyer_name: buyerName.trim(),
+      },
+      onSuccess: async () => {
+        const { error: updateError } = await supabase
+          .from("escrow_orders")
+          .update({
+            buyer_name: buyerName.trim(),
+            buyer_phone: buyerPhone.trim(),
+            status: "HELD_IN_ESCROW",
+          })
+          .eq("id", order.id);
+
+        if (updateError) {
+          setPaying(false);
+          setError(updateError.message);
+          return;
+        }
+
+        router.push(`/order/${order.id}`);
+      },
+      onCancel: () => {
+        setPaying(false);
+      },
+    });
   }
 
   if (loading) {
@@ -193,6 +220,18 @@ export default function PayPage({
                 className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={buyerEmail}
+                onChange={(e) => setBuyerEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </div>
 
             {error && (
               <p className="text-sm font-medium text-red-600">{error}</p>
@@ -219,7 +258,7 @@ export default function PayPage({
         </form>
 
         <p className="mt-4 text-center text-xs text-zinc-400">
-          Simulated checkout for demo purposes.
+          Secure test checkout powered by Paystack.
         </p>
       </div>
     </div>

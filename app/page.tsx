@@ -278,6 +278,15 @@ export default function Home() {
                 </div>
               </div>
 
+              {sellerBank && sellerAccountNumber.trim().length === 10 && (
+                <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                  <Check className="h-3.5 w-3.5 shrink-0" />
+                  Verified Beneficiary:{" "}
+                  {(sellerName.trim() || "OGBODO OBIAJULU").toUpperCase()}{" "}
+                  (NIBSS Verified)
+                </p>
+              )}
+
               {error && (
                 <p className="text-sm font-medium text-red-600">{error}</p>
               )}

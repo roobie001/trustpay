@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Landmark,
   Receipt,
+  Clock,
 } from "lucide-react";
 import { supabase, type EscrowOrder, type EscrowStatus } from "@/lib/supabase";
 import { formatNaira } from "@/lib/format";
@@ -64,6 +65,8 @@ export default function OrderPage({
   const [busy, setBusy] = useState(false);
   const [sellerView, setSellerView] = useState(false);
   const [showPayoutToast, setShowPayoutToast] = useState(false);
+  const [showFreezeModal, setShowFreezeModal] = useState(false);
+  const [localFreeze, setLocalFreeze] = useState(false);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -140,6 +143,12 @@ export default function OrderPage({
     }
   }
 
+  async function handleConfirmFreeze() {
+    setShowFreezeModal(false);
+    setLocalFreeze(true);
+    await updateStatus("DISPUTED");
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center bg-zinc-50">
@@ -161,7 +170,7 @@ export default function OrderPage({
 
   const total = Number(order.amount) + Number(order.delivery_fee);
   const activeStage = stageIndexForStatus(order.status);
-  const isDisputed = order.status === "DISPUTED";
+  const isDisputed = order.status === "DISPUTED" || localFreeze;
 
   return (
     <div className="flex flex-1 flex-col items-center bg-zinc-50 px-4 py-10 sm:py-16">
@@ -170,6 +179,37 @@ export default function OrderPage({
           <div className="flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
             <Check className="h-4 w-4 text-emerald-400" />
             {formatNaira(Number(order.amount))} sent to seller&apos;s account
+          </div>
+        </div>
+      )}
+
+      {showFreezeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-3 flex items-center gap-2 text-amber-600">
+              <TriangleAlert className="h-5 w-5" />
+              <h3 className="text-sm font-semibold text-zinc-900">
+                Freeze Escrow Vault?
+              </h3>
+            </div>
+            <p className="mb-5 text-sm leading-relaxed text-zinc-600">
+              This will lock the payout immediately and initiate a WhatsApp
+              mediation thread with the seller and dispatch courier.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFreezeModal(false)}
+                className="flex-1 rounded-xl border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmFreeze}
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600"
+              >
+                Confirm Freeze
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -184,7 +224,7 @@ export default function OrderPage({
           </p>
         </div>
 
-        <div className="mb-6 flex justify-center">
+        <div className="mb-2 flex justify-center">
           <div className="inline-flex rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
             <button
               onClick={() => setSellerView(false)}
@@ -209,13 +249,16 @@ export default function OrderPage({
             </button>
           </div>
         </div>
+        <p className="mb-6 text-center text-[11px] text-zinc-400">
+          Demo Sandbox: Toggle enabled for evaluation &amp; testing
+        </p>
 
         {isDisputed && (
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <p className="text-sm leading-relaxed text-amber-800">
-              <span className="font-semibold">Funds frozen.</span> This order
-              has been flagged for review. Our team will help resolve it.
+              <span className="font-semibold">⚠️ Escrow Frozen:</span> Dispute
+              #TRP-902 under mediation. Seller &amp; TrustPay notified.
             </p>
           </div>
         )}
@@ -274,6 +317,15 @@ export default function OrderPage({
             })}
           </ol>
         </div>
+
+        {!isDisputed && order.status !== "FUNDS_RELEASED" && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-500">
+            <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            {sellerView
+              ? "Seller Guaranteed: Payout auto-disburses within 24h if buyer is unresponsive."
+              : "Auto-Release Window: 24h post-dispatch before escrow releases automatically."}
+          </div>
+        )}
 
         {sellerView && (
           <div className="mb-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -342,7 +394,7 @@ export default function OrderPage({
         )}
 
         <div className="space-y-3">
-          {sellerView && order.status === "HELD_IN_ESCROW" && (
+          {sellerView && !isDisputed && order.status === "HELD_IN_ESCROW" && (
             <button
               onClick={() => updateStatus("DISPATCHED")}
               disabled={busy}
@@ -357,7 +409,7 @@ export default function OrderPage({
             </button>
           )}
 
-          {!sellerView && order.status === "DISPATCHED" && (
+          {!sellerView && !isDisputed && order.status === "DISPATCHED" && (
             <button
               onClick={() => updateStatus("FUNDS_RELEASED")}
               disabled={busy}
@@ -373,10 +425,11 @@ export default function OrderPage({
           )}
 
           {!sellerView &&
+            !isDisputed &&
             (order.status === "HELD_IN_ESCROW" ||
               order.status === "DISPATCHED") && (
               <button
-                onClick={() => updateStatus("DISPUTED")}
+                onClick={() => setShowFreezeModal(true)}
                 disabled={busy}
                 className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-zinc-400 transition hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
               >

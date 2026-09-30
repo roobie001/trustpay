@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import {
   ShieldCheck,
@@ -19,6 +20,8 @@ import {
 import { supabase, type EscrowOrder, type EscrowStatus } from "@/lib/supabase";
 import { formatNaira } from "@/lib/format";
 import { maskAccountNumber } from "@/lib/banks";
+import { PLATFORM_FEE_RATE } from "@/lib/fees";
+import { BRAND_NAME, DEMO_DISPUTE_REFERENCE, VAULT_NAME } from "@/lib/constants";
 
 function settlementReference(orderId: string): string {
   let hash = 0;
@@ -29,7 +32,7 @@ function settlementReference(orderId: string): string {
 }
 
 const STAGES: { status: EscrowStatus; label: string; icon: typeof ShieldCheck }[] = [
-  { status: "HELD_IN_ESCROW", label: "Payment Locked in Vault", icon: ShieldCheck },
+  { status: "HELD_IN_ESCROW", label: `Payment Locked in ${VAULT_NAME}`, icon: ShieldCheck },
   { status: "DISPATCHED", label: "Dispatched with Rider", icon: Truck },
   { status: "FUNDS_RELEASED", label: "Order Delivered & Inspected", icon: PackageCheck },
   { status: "FUNDS_RELEASED", label: "Funds Released to Seller", icon: Wallet },
@@ -58,12 +61,21 @@ export default function OrderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const sellerKeyParam = searchParams.get("key");
 
   const [order, setOrder] = useState<EscrowOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Role is resolved server-side (app/api/orders/[id]/verify-seller) against
+  // a secret key stored in an RLS-locked table the browser can never read —
+  // this replaces the old client-side demo toggle. Defaults to the buyer
+  // view (fail closed) until the check comes back.
   const [sellerView, setSellerView] = useState(false);
+
   const [showPayoutToast, setShowPayoutToast] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [localFreeze, setLocalFreeze] = useState(false);
@@ -74,6 +86,28 @@ export default function OrderPage({
       if (toastTimeout.current) clearTimeout(toastTimeout.current);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!sellerKeyParam) {
+        if (active) setSellerView(false);
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/orders/${id}/verify-seller?key=${encodeURIComponent(sellerKeyParam)}`
+        );
+        const json = await res.json();
+        if (active) setSellerView(Boolean(json.isSeller));
+      } catch {
+        if (active) setSellerView(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [id, sellerKeyParam]);
 
   useEffect(() => {
     let active = true;
@@ -117,7 +151,7 @@ export default function OrderPage({
     };
   }, [id]);
 
-  async function updateStatus(status: EscrowStatus) {
+  async function updateStatus(status: "DISPATCHED" | "DISPUTED") {
     if (!order) return;
     setBusy(true);
     const { data, error } = await supabase
@@ -129,17 +163,6 @@ export default function OrderPage({
     setBusy(false);
     if (!error && data) {
       setOrder(data);
-      if (status === "FUNDS_RELEASED") {
-        confetti({
-          particleCount: 140,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ["#10B981", "#34D399", "#6EE7B7"],
-        });
-        setShowPayoutToast(true);
-        if (toastTimeout.current) clearTimeout(toastTimeout.current);
-        toastTimeout.current = setTimeout(() => setShowPayoutToast(false), 4500);
-      }
     }
   }
 
@@ -147,6 +170,40 @@ export default function OrderPage({
     setShowFreezeModal(false);
     setLocalFreeze(true);
     await updateStatus("DISPUTED");
+  }
+
+  async function handleReleaseFunds() {
+    if (!order) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/release`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerKey: sellerKeyParam ?? undefined }),
+      });
+      const json = await res.json();
+
+      if (!json.success) {
+        setActionError(json.error ?? "Failed to release funds.");
+        return;
+      }
+
+      setOrder(json.order);
+      confetti({
+        particleCount: 140,
+        spread: 80,
+        origin: { y: 0.6 },
+        colors: ["#10B981", "#34D399", "#6EE7B7"],
+      });
+      setShowPayoutToast(true);
+      if (toastTimeout.current) clearTimeout(toastTimeout.current);
+      toastTimeout.current = setTimeout(() => setShowPayoutToast(false), 4500);
+    } catch {
+      setActionError("Failed to release funds. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loading) {
@@ -169,6 +226,7 @@ export default function OrderPage({
   }
 
   const total = Number(order.amount) + Number(order.delivery_fee);
+  const netPayout = total * (1 - PLATFORM_FEE_RATE);
   const activeStage = stageIndexForStatus(order.status);
   const isDisputed = order.status === "DISPUTED" || localFreeze;
 
@@ -189,7 +247,7 @@ export default function OrderPage({
             <div className="mb-3 flex items-center gap-2 text-amber-600">
               <TriangleAlert className="h-5 w-5" />
               <h3 className="text-sm font-semibold text-zinc-900">
-                Freeze Escrow Vault?
+                Freeze {VAULT_NAME}?
               </h3>
             </div>
             <p className="mb-5 text-sm leading-relaxed text-zinc-600">
@@ -224,41 +282,32 @@ export default function OrderPage({
           </p>
         </div>
 
-        <div className="mb-2 flex justify-center">
-          <div className="inline-flex rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
-            <button
-              onClick={() => setSellerView(false)}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                !sellerView
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
-              Buyer View
-            </button>
-            <button
-              onClick={() => setSellerView(true)}
-              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                sellerView
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
+        {sellerView && (
+          <div className="mb-6 flex justify-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold text-white">
               <LayoutDashboard className="h-3.5 w-3.5" />
               Seller Dashboard
-            </button>
+            </span>
           </div>
-        </div>
-        <p className="mb-6 text-center text-[11px] text-zinc-400">
-          Demo Sandbox: Toggle enabled for evaluation &amp; testing
-        </p>
+        )}
+
+        {order.status === "PENDING_PAYMENT" && !sellerView && (
+          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-zinc-400" />
+            <p className="text-sm text-zinc-600">
+              Confirming your payment with Paystack — this usually takes a few
+              seconds.
+            </p>
+          </div>
+        )}
 
         {isDisputed && (
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <p className="text-sm leading-relaxed text-amber-800">
               <span className="font-semibold">⚠️ Escrow Frozen:</span> Dispute
-              #TRP-902 under mediation. Seller &amp; TrustPay notified.
+              #{DEMO_DISPUTE_REFERENCE} under mediation. Seller &amp; {BRAND_NAME}{" "}
+              notified.
             </p>
           </div>
         )}
@@ -322,8 +371,8 @@ export default function OrderPage({
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-500">
             <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
             {sellerView
-              ? "Seller Guaranteed: Payout auto-disburses within 24h if buyer is unresponsive."
-              : "Auto-Release Window: 24h post-dispatch before escrow releases automatically."}
+              ? `Seller Guaranteed: The ${VAULT_NAME} auto-disburses your payout within 24h if the buyer is unresponsive.`
+              : `Auto-Release Window: 24h post-dispatch before the ${VAULT_NAME} releases funds automatically.`}
           </div>
         )}
 
@@ -369,13 +418,13 @@ export default function OrderPage({
                   <div className="flex items-center justify-between">
                     <dt className="text-emerald-700">Net Payout Amount</dt>
                     <dd className="font-semibold text-emerald-900">
-                      {formatNaira(Number(order.amount))}
+                      {formatNaira(netPayout)}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-emerald-700">Transaction Reference</dt>
                     <dd className="font-mono text-xs font-medium text-emerald-900">
-                      {settlementReference(order.id)}
+                      {order.transfer_reference ?? settlementReference(order.id)}
                     </dd>
                   </div>
                 </dl>
@@ -391,6 +440,10 @@ export default function OrderPage({
               </p>
             )}
           </div>
+        )}
+
+        {actionError && (
+          <p className="mb-3 text-sm font-medium text-red-600">{actionError}</p>
         )}
 
         <div className="space-y-3">
@@ -411,7 +464,7 @@ export default function OrderPage({
 
           {!sellerView && !isDisputed && order.status === "DISPATCHED" && (
             <button
-              onClick={() => updateStatus("FUNDS_RELEASED")}
+              onClick={handleReleaseFunds}
               disabled={busy}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -420,7 +473,7 @@ export default function OrderPage({
               ) : (
                 <Wallet className="h-5 w-5" />
               )}
-              Confirm &amp; Release Funds
+              {busy ? "Releasing & disbursing..." : "Confirm & Release Funds"}
             </button>
           )}
 

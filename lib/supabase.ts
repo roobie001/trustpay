@@ -28,9 +28,14 @@ export type EscrowOrder = {
   seller_name: string;
   seller_phone: string;
   seller_bank: string | null;
+  seller_bank_code: string | null;
   seller_account_number: string | null;
   buyer_name: string | null;
   buyer_phone: string | null;
   status: EscrowStatus;
+  paystack_reference: string | null;
+  paid_at: string | null;
+  transfer_code: string | null;
+  transfer_reference: string | null;
   created_at: string;
 };

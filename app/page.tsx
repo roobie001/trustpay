@@ -1,10 +1,24 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { ShieldCheck, Link2, Copy, Check, MessageCircle, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  ShieldCheck,
+  Link2,
+  Copy,
+  Check,
+  MessageCircle,
+  Loader2,
+  TriangleAlert,
+  Store,
+} from "lucide-react";
 import { formatNaira } from "@/lib/format";
 import { NIGERIAN_BANKS } from "@/lib/banks";
+import { BRAND_NAME, VAULT_NAME, whatsappPaymentMessage } from "@/lib/constants";
+
+interface CreateOrderResult {
+  buyerUrl: string;
+  sellerUrl: string;
+}
 
 export default function Home() {
   const [itemTitle, setItemTitle] = useState("");
@@ -12,12 +26,55 @@ export default function Home() {
   const [deliveryFee, setDeliveryFee] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
-  const [sellerBank, setSellerBank] = useState("");
+  const [sellerBankCode, setSellerBankCode] = useState("");
   const [sellerAccountNumber, setSellerAccountNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState<CreateOrderResult | null>(null);
+  const [copied, setCopied] = useState<"buyer" | "seller" | null>(null);
+
+  const [resolving, setResolving] = useState(false);
+  const [resolvedAccountName, setResolvedAccountName] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const timer = setTimeout(async () => {
+      if (!active) return;
+      setResolvedAccountName(null);
+      setResolveError(null);
+
+      if (!sellerBankCode || sellerAccountNumber.trim().length !== 10) {
+        return;
+      }
+
+      setResolving(true);
+      try {
+        const params = new URLSearchParams({
+          account_number: sellerAccountNumber.trim(),
+          bank_code: sellerBankCode,
+        });
+        const res = await fetch(`/api/resolve-account?${params.toString()}`);
+        const json = await res.json();
+        if (!active) return;
+        if (json.success) {
+          setResolvedAccountName(json.account_name);
+        } else {
+          setResolveError(json.error ?? "Could not verify this account.");
+        }
+      } catch {
+        if (active) setResolveError("Could not verify this account.");
+      } finally {
+        if (active) setResolving(false);
+      }
+    }, 400);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [sellerBankCode, sellerAccountNumber]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,7 +87,7 @@ export default function Home() {
       !itemTitle.trim() ||
       !sellerName.trim() ||
       !sellerPhone.trim() ||
-      !sellerBank.trim() ||
+      !sellerBankCode.trim() ||
       !sellerAccountNumber.trim()
     ) {
       setError("Please fill in every field.");
@@ -44,29 +101,42 @@ export default function Home() {
       setError("Enter a valid delivery fee.");
       return;
     }
-
-    setLoading(true);
-    const { data, error: insertError } = await supabase
-      .from("escrow_orders")
-      .insert({
-        item_title: itemTitle.trim(),
-        amount: parsedAmount,
-        delivery_fee: parsedDeliveryFee,
-        seller_name: sellerName.trim(),
-        seller_phone: sellerPhone.trim(),
-        seller_bank: sellerBank,
-        seller_account_number: sellerAccountNumber.trim(),
-      })
-      .select("id")
-      .single();
-    setLoading(false);
-
-    if (insertError || !data) {
-      setError(insertError?.message ?? "Something went wrong. Try again.");
+    if (!resolvedAccountName) {
+      setError("Please verify the seller's bank account before continuing.");
       return;
     }
 
-    setShareUrl(`${window.location.origin}/pay/${data.id}`);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item_title: itemTitle.trim(),
+          amount: parsedAmount,
+          delivery_fee: parsedDeliveryFee,
+          seller_name: sellerName.trim(),
+          seller_phone: sellerPhone.trim(),
+          seller_bank_code: sellerBankCode,
+          seller_account_number: sellerAccountNumber.trim(),
+        }),
+      });
+      const json = await res.json();
+
+      if (!json.success) {
+        setError(json.error ?? "Something went wrong. Try again.");
+        return;
+      }
+
+      setResult({
+        buyerUrl: `${window.location.origin}/pay/${json.id}`,
+        sellerUrl: `${window.location.origin}/order/${json.id}?key=${json.sellerKey}`,
+      });
+    } catch {
+      setError("Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function resetForm() {
@@ -75,17 +145,24 @@ export default function Home() {
     setDeliveryFee("");
     setSellerName("");
     setSellerPhone("");
-    setSellerBank("");
+    setSellerBankCode("");
     setSellerAccountNumber("");
-    setShareUrl(null);
-    setCopied(false);
+    setResolvedAccountName(null);
+    setResolveError(null);
+    setResult(null);
+    setCopied(null);
   }
 
-  const total =
-    (Number(amount) || 0) + (Number(deliveryFee) || 0);
+  async function copyLink(which: "buyer" | "seller", url: string) {
+    await navigator.clipboard.writeText(url);
+    setCopied(which);
+    setTimeout(() => setCopied(null), 2000);
+  }
 
-  const whatsappMessage = shareUrl
-    ? `Hi! Please complete your payment for "${itemTitle}" securely via TrustPay escrow: ${shareUrl}\n\nYour money is 100% protected until you confirm delivery.`
+  const total = (Number(amount) || 0) + (Number(deliveryFee) || 0);
+
+  const whatsappMessage = result
+    ? whatsappPaymentMessage(itemTitle, result.buyerUrl)
     : "";
 
   return (
@@ -96,47 +173,43 @@ export default function Home() {
             <ShieldCheck className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            TrustPay
+            {BRAND_NAME}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             Create a 30-second escrow link for WhatsApp &amp; Instagram sales.
           </p>
         </div>
 
-        {shareUrl ? (
+        {result ? (
           <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-emerald-700">
               <Check className="h-5 w-5 shrink-0" />
               <p className="text-sm font-medium">
-                Escrow link generated! Send it to your buyer.
+                Escrow link generated! Send the buyer link to your buyer.
               </p>
             </div>
 
             <label className="mb-1 block text-xs font-medium text-zinc-500">
-              Shareable link
+              Buyer link — share this
             </label>
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
               <Link2 className="h-4 w-4 shrink-0 text-zinc-400" />
               <span className="flex-1 truncate text-sm text-zinc-700">
-                {shareUrl}
+                {result.buyerUrl}
               </span>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
               <button
-                onClick={async () => {
-                  await navigator.clipboard.writeText(shareUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
+                onClick={() => copyLink("buyer", result.buyerUrl)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
               >
-                {copied ? (
+                {copied === "buyer" ? (
                   <Check className="h-4 w-4 text-emerald-600" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
-                {copied ? "Copied" : "Copy Link"}
+                {copied === "buyer" ? "Copied" : "Copy Link"}
               </button>
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`}
@@ -148,6 +221,34 @@ export default function Home() {
                 Share on WhatsApp
               </a>
             </div>
+
+            <div className="h-px bg-zinc-100" />
+
+            <label className="mb-1 mt-4 flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+              <Store className="h-3.5 w-3.5" />
+              Seller dashboard link — keep this private
+            </label>
+            <div className="mb-2 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <Link2 className="h-4 w-4 shrink-0 text-zinc-400" />
+              <span className="flex-1 truncate text-sm text-zinc-700">
+                {result.sellerUrl}
+              </span>
+            </div>
+            <p className="mb-3 text-xs text-zinc-400">
+              This link lets you mark the order dispatched and is the only way
+              to manage this order later — save it now.
+            </p>
+            <button
+              onClick={() => copyLink("seller", result.sellerUrl)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              {copied === "seller" ? (
+                <Check className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied === "seller" ? "Copied" : "Copy Seller Link"}
+            </button>
 
             <button
               onClick={resetForm}
@@ -249,16 +350,16 @@ export default function Home() {
                     Payout Bank
                   </label>
                   <select
-                    value={sellerBank}
-                    onChange={(e) => setSellerBank(e.target.value)}
+                    value={sellerBankCode}
+                    onChange={(e) => setSellerBankCode(e.target.value)}
                     className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                   >
                     <option value="" disabled>
                       Select bank
                     </option>
                     {NIGERIAN_BANKS.map((bank) => (
-                      <option key={bank} value={bank}>
-                        {bank}
+                      <option key={bank.code} value={bank.code}>
+                        {bank.name}
                       </option>
                     ))}
                   </select>
@@ -270,20 +371,38 @@ export default function Home() {
                   <input
                     type="text"
                     inputMode="numeric"
+                    maxLength={10}
                     value={sellerAccountNumber}
-                    onChange={(e) => setSellerAccountNumber(e.target.value)}
+                    onChange={(e) =>
+                      setSellerAccountNumber(e.target.value.replace(/\D/g, ""))
+                    }
                     placeholder="0123456789"
                     className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                   />
                 </div>
               </div>
 
-              {sellerBank && sellerAccountNumber.trim().length === 10 && (
-                <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                  <Check className="h-3.5 w-3.5 shrink-0" />
-                  Verified Beneficiary:{" "}
-                  {(sellerName.trim() || "OGBODO OBIAJULU").toUpperCase()}{" "}
-                  (NIBSS Verified)
+              {sellerBankCode && sellerAccountNumber.length === 10 && (
+                <p className="flex items-center gap-1.5 text-xs font-medium">
+                  {resolving && (
+                    <span className="flex items-center gap-1.5 text-zinc-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Verifying account with NIBSS...
+                    </span>
+                  )}
+                  {!resolving && resolvedAccountName && (
+                    <span className="flex items-center gap-1.5 text-emerald-600">
+                      <Check className="h-3.5 w-3.5 shrink-0" />
+                      Verified Beneficiary: {resolvedAccountName.toUpperCase()}{" "}
+                      (NIBSS Verified)
+                    </span>
+                  )}
+                  {!resolving && resolveError && (
+                    <span className="flex items-center gap-1.5 text-red-600">
+                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                      {resolveError}
+                    </span>
+                  )}
                 </p>
               )}
 
@@ -309,7 +428,7 @@ export default function Home() {
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-zinc-400">
           <ShieldCheck className="h-3.5 w-3.5" />
-          Funds are held in escrow until the buyer confirms delivery.
+          Funds are held in the {VAULT_NAME} until the buyer confirms delivery.
         </p>
       </div>
     </div>

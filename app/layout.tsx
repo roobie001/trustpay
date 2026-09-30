@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { BRAND_NAME } from "@/lib/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -12,10 +13,28 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const title = `${BRAND_NAME} — The Neutral Escrow Bridge for Social Commerce`;
+const description =
+  `${BRAND_NAME} holds buyer funds securely at the midpoint until doorstep delivery is verified. Fast, link-based escrow for WhatsApp & Instagram trade in Nigeria.`;
+
 export const metadata: Metadata = {
-  title: "TrustPay — Escrow Links for Social Commerce",
-  description:
-    "Create a 30-second escrow payment link for WhatsApp and Instagram sales. Funds stay locked until the buyer confirms delivery.",
+  title: {
+    template: `%s | ${BRAND_NAME}`,
+    default: title,
+  },
+  description,
+  openGraph: {
+    title,
+    description,
+    siteName: BRAND_NAME,
+    type: "website",
+    locale: "en_NG",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

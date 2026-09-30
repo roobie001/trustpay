@@ -6,6 +6,7 @@ import PaystackPop from "@paystack/inline-js";
 import { ShieldCheck, Loader2, PackageSearch } from "lucide-react";
 import { supabase, type EscrowOrder } from "@/lib/supabase";
 import { formatNaira } from "@/lib/format";
+import { VAULT_NAME } from "@/lib/constants";
 
 const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
@@ -81,19 +82,22 @@ export default function PayPage({
         buyer_name: buyerName.trim(),
       },
       onSuccess: async () => {
+        // The Paystack webhook (server-side, signature-verified) is the
+        // source of truth for moving status to HELD_IN_ESCROW — a client
+        // callback can be spoofed, so it must never flip escrow state
+        // itself. This only saves non-financial contact details; the order
+        // page shows a "confirming payment" state and picks up the real
+        // status change via its realtime subscription within a second or two.
         const { error: updateError } = await supabase
           .from("escrow_orders")
           .update({
             buyer_name: buyerName.trim(),
             buyer_phone: buyerPhone.trim(),
-            status: "HELD_IN_ESCROW",
           })
           .eq("id", order.id);
 
         if (updateError) {
-          setPaying(false);
-          setError(updateError.message);
-          return;
+          console.error("Failed to save buyer contact details:", updateError.message);
         }
 
         router.push(`/order/${order.id}`);
@@ -160,8 +164,9 @@ export default function PayPage({
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
           <p className="text-sm leading-relaxed text-emerald-800">
-            <span className="font-semibold">100% Vault Protected:</span> The
-            seller is not paid until you receive and inspect your package.
+            <span className="font-semibold">100% {VAULT_NAME} Protected:</span>{" "}
+            The seller is not paid until you receive and inspect your
+            package.
           </p>
         </div>
 

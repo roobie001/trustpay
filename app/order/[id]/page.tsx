@@ -130,11 +130,12 @@ export default function OrderPage({
 
     load();
     let pollInFlight = false;
+    let paymentConfirmed = false;
     const poll = setInterval(async () => {
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        if (paymentReference) {
+        if (paymentReference && !paymentConfirmed) {
           await fetch("/api/verify-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -150,13 +151,13 @@ export default function OrderPage({
           .maybeSingle();
         if (!active || !data) return;
         setOrder(data);
-        if (data.status !== "PENDING_PAYMENT") clearInterval(poll);
+        if (data.status !== "PENDING_PAYMENT") paymentConfirmed = true;
       } catch (error) {
         console.error("Failed to refresh payment status:", error);
       } finally {
         pollInFlight = false;
       }
-    }, 2000);
+    }, 3000);
 
     const channel = supabase
       .channel(`escrow_orders:${id}`)
@@ -184,15 +185,35 @@ export default function OrderPage({
   async function updateStatus(status: "DISPATCHED" | "DISPUTED") {
     if (!order) return;
     setBusy(true);
-    const { data, error } = await supabase
-      .from("escrow_orders")
-      .update({ status })
-      .eq("id", order.id)
-      .select("*")
-      .single();
-    setBusy(false);
-    if (!error && data) {
-      setOrder(data);
+    setActionError(null);
+    try {
+      if (status === "DISPATCHED") {
+        const res = await fetch(`/api/orders/${order.id}/dispatch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sellerKey: sellerKeyParam }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          setActionError(json.error ?? "Unable to mark order as dispatched.");
+          return;
+        }
+        setOrder(json.order);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("escrow_orders")
+        .update({ status })
+        .eq("id", order.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      if (data) setOrder(data);
+    } catch {
+      setActionError("Unable to update order status. Please try again.");
+    } finally {
+      setBusy(false);
     }
   }
 

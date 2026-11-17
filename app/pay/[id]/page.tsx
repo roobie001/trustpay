@@ -29,6 +29,18 @@ export default function PayPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    try {
+      const trackingUrl = `${window.location.origin}/order/${id}`;
+      const storageKey = "mediopoint_buyer_tracking_links";
+      const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+      const links = Array.isArray(saved) ? saved.filter((url): url is string => typeof url === "string") : [];
+      localStorage.setItem(storageKey, JSON.stringify([trackingUrl, ...links.filter((url) => url !== trackingUrl)].slice(0, 50)));
+    } catch (storageError) {
+      console.warn("Unable to save buyer tracking link on this device:", storageError);
+    }
+  }, [id]);
+
+  useEffect(() => {
     let active = true;
     (async () => {
       const { data } = await supabase

@@ -16,10 +16,15 @@ import { NIGERIAN_BANKS } from "@/lib/banks";
 import { BRAND_NAME, VAULT_NAME, whatsappPaymentMessage } from "@/lib/constants";
 
 interface CreateOrderResult {
+  orderId: string;
+  itemTitle: string;
   buyerUrl: string;
   sellerUrl: string;
   totalAmount: number;
+  sellerPhone: string;
 }
+
+const RECENT_ORDERS_KEY = "mediopoint_recent_orders";
 
 export default function Home() {
   const [itemTitle, setItemTitle] = useState("");
@@ -33,10 +38,20 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CreateOrderResult | null>(null);
   const [copied, setCopied] = useState<"buyer" | "seller" | null>(null);
+  const [recentOrders, setRecentOrders] = useState<CreateOrderResult[]>([]);
 
   const [resolving, setResolving] = useState(false);
   const [resolvedAccountName, setResolvedAccountName] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(RECENT_ORDERS_KEY) ?? "[]");
+      if (Array.isArray(saved)) setRecentOrders(saved);
+    } catch {
+      localStorage.removeItem(RECENT_ORDERS_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -129,11 +144,22 @@ export default function Home() {
         return;
       }
 
-      setResult({
+      const savedOrder: CreateOrderResult = {
+        orderId: json.id,
+        itemTitle: itemTitle.trim(),
         buyerUrl: `${window.location.origin}/pay/${json.id}`,
         sellerUrl: `${window.location.origin}/order/${json.id}?key=${json.sellerKey}`,
         totalAmount: json.total_amount,
-      });
+        sellerPhone: sellerPhone.trim(),
+      };
+      const nextRecentOrders = [savedOrder, ...recentOrders.filter((order) => order.orderId !== savedOrder.orderId)];
+      setRecentOrders(nextRecentOrders);
+      try {
+        localStorage.setItem(RECENT_ORDERS_KEY, JSON.stringify(nextRecentOrders));
+      } catch {
+        setError("Order created, but this browser could not save the links. Copy them now to keep access.");
+      }
+      setResult(savedOrder);
     } catch {
       setError("Something went wrong. Try again.");
     } finally {
@@ -161,11 +187,24 @@ export default function Home() {
     setTimeout(() => setCopied(null), 2000);
   }
 
+  async function copySavedLink(which: "buyer" | "seller", url: string) {
+    await navigator.clipboard.writeText(url);
+    setCopied(which);
+    window.setTimeout(() => setCopied(null), 2000);
+  }
+
   const total = (Number(amount) || 0) + (Number(deliveryFee) || 0);
 
   const whatsappMessage = result
     ? whatsappPaymentMessage(itemTitle, result.buyerUrl)
     : "";
+  const whatsappBackupMessage = result
+    ? `MedioPoint order: ${result.itemTitle}\nBuyer tracking link: ${result.buyerUrl}\nSeller dashboard link (private): ${result.sellerUrl}`
+    : "";
+  const sellerPhoneDigits = result?.sellerPhone.replace(/\D/g, "") ?? "";
+  const sellerWhatsappPhone = sellerPhoneDigits.startsWith("0")
+    ? `234${sellerPhoneDigits.slice(1)}`
+    : sellerPhoneDigits;
 
   return (
     <div className="flex flex-1 flex-col items-center bg-zinc-50 px-4 py-10 sm:py-16">
@@ -227,7 +266,7 @@ export default function Home() {
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
               >
                 <MessageCircle className="h-4 w-4" />
-                Share on WhatsApp
+                Send Buyer Link via WhatsApp
               </a>
             </div>
 
@@ -258,6 +297,16 @@ export default function Home() {
               )}
               {copied === "seller" ? "Copied" : "Copy Seller Link"}
             </button>
+
+            <a
+              href={`https://wa.me/${sellerWhatsappPhone}?text=${encodeURIComponent(whatsappBackupMessage)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Save Seller Link to WhatsApp
+            </a>
 
             <button
               onClick={resetForm}
@@ -434,6 +483,32 @@ export default function Home() {
             </div>
           </form>
         )}
+
+        <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-900">Recent Orders &amp; Links</h2>
+          {recentOrders.length === 0 ? (
+            <p className="mt-2 text-sm text-zinc-500">Generated orders and their links will be saved here on this device.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {recentOrders.map((order) => (
+                <li key={order.orderId} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3">
+                  <p className="truncate text-sm font-medium text-zinc-900">{order.itemTitle}</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">{formatNaira(order.totalAmount)}</p>
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={() => void copySavedLink("buyer", order.buyerUrl)} className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-xs font-medium text-zinc-700">Copy Buyer Link</button>
+                    <a href={order.buyerUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-xs font-medium text-zinc-700">Open Tracking</a>
+                  </div>
+                  {order.sellerUrl && (
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => void copySavedLink("seller", order.sellerUrl)} className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-xs font-medium text-zinc-700">Copy Seller Link</button>
+                      <a href={order.sellerUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-xs font-medium text-zinc-700">Open Dashboard</a>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-zinc-400">
           <ShieldCheck className="h-3.5 w-3.5" />

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { PaystackError, createTransferRecipient, initiateTransfer } from "@/lib/paystack";
-import { PLATFORM_FEE_RATE } from "@/lib/fees";
 import { BRAND_NAME } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -9,7 +8,7 @@ export const runtime = "nodejs";
 // The buyer confirms delivery from the DISPATCHED stage in this app's flow
 // (seller must mark dispatched before the buyer can release funds) — so
 // that, not HELD_IN_ESCROW, is the releasable state.
-const RELEASABLE_STATUSES = ["DISPATCHED"];
+const RELEASABLE_STATUSES = ["HELD_IN_ESCROW", "DISPATCHED"];
 
 interface ReleaseBody {
   sellerKey?: string;
@@ -95,8 +94,7 @@ export async function POST(
   }
 
   const grossAmount = Number(order.amount) + Number(order.delivery_fee);
-  const netAmount = grossAmount * (1 - PLATFORM_FEE_RATE);
-  const netAmountKobo = Math.round(netAmount * 100);
+  const amountKobo = Math.round(grossAmount * 100);
 
   try {
     const recipient = await createTransferRecipient({
@@ -105,13 +103,13 @@ export async function POST(
       bank_code: order.seller_bank_code,
     });
 
-    const transferReference = `TP-RELEASE-${order.id}-${Date.now()}`;
+    const transferReference = `payout_${order.id}`;
 
     const transfer = await initiateTransfer({
-      amount: netAmountKobo,
+      amount: amountKobo,
       recipient: recipient.data.recipient_code,
       reference: transferReference,
-      reason: `${BRAND_NAME} payout for order ${order.id}`,
+      reason: `${BRAND_NAME} Escrow Payout - ${String(order.item_title)}`,
     });
 
     const { data: updated, error: updateError } = await admin

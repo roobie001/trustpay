@@ -81,13 +81,23 @@ export default function PayPage({
         order_id: order.id,
         buyer_name: buyerName.trim(),
       },
-      onSuccess: async () => {
-        // The Paystack webhook (server-side, signature-verified) is the
-        // source of truth for moving status to HELD_IN_ESCROW — a client
-        // callback can be spoofed, so it must never flip escrow state
-        // itself. This only saves non-financial contact details; the order
-        // page shows a "confirming payment" state and picks up the real
-        // status change via its realtime subscription within a second or two.
+      onSuccess: async (response) => {
+        // The server verifies the callback reference before it updates escrow status.
+        if (response.reference) {
+          try {
+            const verification = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: order.id, reference: response.reference }),
+            });
+            if (!verification.ok) {
+              console.error("Payment verification is still pending:", await verification.text());
+            }
+          } catch (verificationError) {
+            console.error("Failed to verify Paystack payment:", verificationError);
+          }
+        }
+
         const { error: updateError } = await supabase
           .from("escrow_orders")
           .update({

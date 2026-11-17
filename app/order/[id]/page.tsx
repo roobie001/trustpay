@@ -128,6 +128,16 @@ export default function OrderPage({
     }
 
     load();
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from("escrow_orders")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (!active || !data) return;
+      setOrder(data);
+      if (data.status !== "PENDING_PAYMENT") clearInterval(poll);
+    }, 2000);
 
     const channel = supabase
       .channel(`escrow_orders:${id}`)
@@ -147,6 +157,7 @@ export default function OrderPage({
 
     return () => {
       active = false;
+      clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [id]);

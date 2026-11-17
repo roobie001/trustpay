@@ -46,6 +46,23 @@ export interface ResolvedAccount {
   bank_id: number;
 }
 
+export interface VerifiedTransaction {
+  reference: string;
+  status: string;
+  amount: number;
+  currency: string;
+  metadata?: { order_id?: string } | null;
+  paid_at?: string | null;
+}
+
+export function verifyTransaction(reference: string) {
+  return paystackFetch<{
+    status: boolean;
+    message: string;
+    data: VerifiedTransaction;
+  }>(`/transaction/verify/${encodeURIComponent(reference)}`);
+}
+
 export function resolveAccountNumber(accountNumber: string, bankCode: string) {
   const params = new URLSearchParams({
     account_number: accountNumber,

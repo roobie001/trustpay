@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         console.error(`[paystack webhook] failed to update order ${orderId}:`, error.message);
+        return NextResponse.json({ error: "Unable to update order" }, { status: 500 });
       } else if (data) {
         console.log(
           `[paystack webhook] order ${orderId} funded. ref=${reference} paid_at=${paid_at ?? "unknown"}`

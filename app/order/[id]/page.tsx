@@ -63,6 +63,7 @@ export default function OrderPage({
   const { id } = use(params);
   const searchParams = useSearchParams();
   const sellerKeyParam = searchParams.get("key");
+  const paymentReference = searchParams.get("reference");
 
   const [order, setOrder] = useState<EscrowOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,15 +129,33 @@ export default function OrderPage({
     }
 
     load();
+    let pollInFlight = false;
     const poll = setInterval(async () => {
-      const { data } = await supabase
-        .from("escrow_orders")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
-      if (!active || !data) return;
-      setOrder(data);
-      if (data.status !== "PENDING_PAYMENT") clearInterval(poll);
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        if (paymentReference) {
+          await fetch("/api/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: id, reference: paymentReference }),
+            signal: AbortSignal.timeout(6000),
+          });
+        }
+
+        const { data } = await supabase
+          .from("escrow_orders")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (!active || !data) return;
+        setOrder(data);
+        if (data.status !== "PENDING_PAYMENT") clearInterval(poll);
+      } catch (error) {
+        console.error("Failed to refresh payment status:", error);
+      } finally {
+        pollInFlight = false;
+      }
     }, 2000);
 
     const channel = supabase
@@ -160,7 +179,7 @@ export default function OrderPage({
       clearInterval(poll);
       supabase.removeChannel(channel);
     };
-  }, [id]);
+  }, [id, paymentReference]);
 
   async function updateStatus(status: "DISPATCHED" | "DISPUTED") {
     if (!order) return;

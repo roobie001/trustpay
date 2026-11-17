@@ -83,12 +83,14 @@ export default function PayPage({
       },
       onSuccess: async (response) => {
         // The server verifies the callback reference before it updates escrow status.
-        if (response.reference) {
+        const reference = response.reference || response.trxref;
+        if (reference) {
           try {
             const verification = await fetch("/api/verify-payment", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId: order.id, reference: response.reference }),
+              body: JSON.stringify({ orderId: order.id, reference }),
+              signal: AbortSignal.timeout(8000),
             });
             if (!verification.ok) {
               console.error("Payment verification is still pending:", await verification.text());
@@ -110,7 +112,9 @@ export default function PayPage({
           console.error("Failed to save buyer contact details:", updateError.message);
         }
 
-        router.push(`/order/${order.id}`);
+        const statusUrl = new URL(`/order/${order.id}`, window.location.origin);
+        if (reference) statusUrl.searchParams.set("reference", reference);
+        router.push(`${statusUrl.pathname}${statusUrl.search}`);
       },
       onCancel: () => {
         setPaying(false);

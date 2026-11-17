@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const totalAmount = amount + delivery_fee;
+
   if (!/^\d{10}$/.test(seller_account_number)) {
     return NextResponse.json(
       {
@@ -135,6 +137,7 @@ export async function POST(request: NextRequest) {
       success: true,
       id: order.id,
       sellerKey: sellerSecretKey,
+      total_amount: totalAmount,
     });
   } catch (error: any) {
     console.error("[orders] full server error stack:", error);

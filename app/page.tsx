@@ -18,6 +18,7 @@ import { BRAND_NAME, VAULT_NAME, whatsappPaymentMessage } from "@/lib/constants"
 interface CreateOrderResult {
   buyerUrl: string;
   sellerUrl: string;
+  totalAmount: number;
 }
 
 export default function Home() {
@@ -131,6 +132,7 @@ export default function Home() {
       setResult({
         buyerUrl: `${window.location.origin}/pay/${json.id}`,
         sellerUrl: `${window.location.origin}/order/${json.id}?key=${json.sellerKey}`,
+        totalAmount: json.total_amount,
       });
     } catch {
       setError("Something went wrong. Try again.");
@@ -188,6 +190,13 @@ export default function Home() {
                 Escrow link generated! Send the buyer link to your buyer.
               </p>
             </div>
+
+            <p className="mb-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+              Total buyer payment: {" "}
+              <span className="font-semibold text-zinc-900">
+                {formatNaira(result.totalAmount)}
+              </span>
+            </p>
 
             <label className="mb-1 block text-xs font-medium text-zinc-500">
               Buyer link — share this

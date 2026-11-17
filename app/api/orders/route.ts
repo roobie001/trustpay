@@ -20,7 +20,10 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ success: false, error: "Invalid JSON body." }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid JSON body." },
+      { status: 400 },
+    );
   }
 
   const {
@@ -42,28 +45,35 @@ export async function POST(request: NextRequest) {
   ) {
     return NextResponse.json(
       { success: false, error: "Missing required order fields." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json(
       { success: false, error: "amount must be a positive number." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  if (typeof delivery_fee !== "number" || !Number.isFinite(delivery_fee) || delivery_fee < 0) {
+  if (
+    typeof delivery_fee !== "number" ||
+    !Number.isFinite(delivery_fee) ||
+    delivery_fee < 0
+  ) {
     return NextResponse.json(
       { success: false, error: "delivery_fee must be a non-negative number." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (!/^\d{10}$/.test(seller_account_number)) {
     return NextResponse.json(
-      { success: false, error: "seller_account_number must be exactly 10 digits." },
-      { status: 400 }
+      {
+        success: false,
+        error: "seller_account_number must be exactly 10 digits.",
+      },
+      { status: 400 },
     );
   }
 
@@ -71,7 +81,7 @@ export async function POST(request: NextRequest) {
   if (!sellerBankName) {
     return NextResponse.json(
       { success: false, error: "Unrecognized seller_bank_code." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -95,8 +105,11 @@ export async function POST(request: NextRequest) {
 
     if (insertError || !order) {
       return NextResponse.json(
-        { success: false, error: insertError?.message ?? "Failed to create order." },
-        { status: 500 }
+        {
+          success: false,
+          error: insertError?.message ?? "Failed to create order.",
+        },
+        { status: 500 },
       );
     }
 
@@ -110,17 +123,24 @@ export async function POST(request: NextRequest) {
       // Don't leave an order behind that the seller can never manage.
       await admin.from("escrow_orders").delete().eq("id", order.id);
       return NextResponse.json(
-        { success: false, error: "Failed to secure the new order. Please try again." },
-        { status: 500 }
+        {
+          success: false,
+          error: "Failed to secure the new order. Please try again.",
+        },
+        { status: 500 },
       );
     }
 
-    return NextResponse.json({ success: true, id: order.id, sellerKey: sellerSecretKey });
-  } catch (error) {
-    console.error("[orders] server error:", error);
+    return NextResponse.json({
+      success: true,
+      id: order.id,
+      sellerKey: sellerSecretKey,
+    });
+  } catch (error: any) {
+    console.error("[orders] full server error stack:", error);
     return NextResponse.json(
-      { success: false, error: "Server is not configured to create orders yet." },
-      { status: 500 }
+      { success: false, error: `Server Error: ${error.message || error}` },
+      { status: 500 },
     );
   }
 }

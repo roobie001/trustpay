@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PaystackError, resolveAccountNumber } from "@/lib/paystack";
+import { PaystackError, resolveAccountNumber, isPaystackTestMode } from "@/lib/paystack";
 
 export const runtime = "nodejs";
 
@@ -25,6 +25,16 @@ export async function GET(request: NextRequest) {
     const result = await resolveAccountNumber(accountNumber, bankCode);
     return NextResponse.json({ success: true, account_name: result.data.account_name });
   } catch (error) {
+    // In Paystack test mode, if NIBSS live resolution fails or dummy account is tested,
+    // gracefully resolve with a test beneficiary so test escrow links can be generated seamlessly.
+    if (isPaystackTestMode()) {
+      return NextResponse.json({
+        success: true,
+        account_name: "TEST ACCOUNT BENEFICIARY (PAYSTACK TEST)",
+        isTestMode: true,
+      });
+    }
+
     if (error instanceof PaystackError) {
       return NextResponse.json(
         { success: false, error: error.message },

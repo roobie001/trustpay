@@ -60,8 +60,6 @@ export async function POST(request: NextRequest) {
         .from("escrow_orders")
         .update({
           status: "HELD_IN_ESCROW",
-          paystack_reference: reference,
-          paid_at: paid_at ?? new Date().toISOString(),
         })
         .eq("id", orderId)
         .eq("status", "PENDING_PAYMENT")

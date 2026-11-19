@@ -1,5 +1,8 @@
 // Server-only. Never import this file from a "use client" component —
 // PAYSTACK_SECRET_KEY must never reach the browser bundle.
+import fs from "node:fs";
+import path from "node:path";
+
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
 export class PaystackError extends Error {
@@ -11,8 +14,63 @@ export class PaystackError extends Error {
   }
 }
 
-function getSecretKey(): string {
-  const key = process.env.PAYSTACK_SECRET_KEY;
+// Dynamically read .env.local and .env from disk so edits take effect immediately
+// without requiring a manual restart of the Next.js dev server.
+function readEnvLocal(): Record<string, string> {
+  const env: Record<string, string> = {};
+  try {
+    const cwd = process.cwd();
+    const candidatePaths = [
+      path.resolve(cwd, ".env.local"),
+      path.resolve(cwd, ".env"),
+    ];
+
+    for (const envPath of candidatePaths) {
+      if (fs.existsSync(/*turbopackIgnore: true*/ envPath)) {
+        const content = fs.readFileSync(/*turbopackIgnore: true*/ envPath, "utf8");
+        for (const line of content.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith("#")) {
+            const eqIdx = trimmed.indexOf("=");
+            if (eqIdx > 0) {
+              const key = trimmed.slice(0, eqIdx).trim();
+              const rawVal = trimmed.slice(eqIdx + 1).trim();
+              const cleanVal = rawVal.replace(/^["']|["']$/g, "").trim();
+              if (env[key] === undefined) {
+                env[key] = cleanVal;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore and fallback to process.env
+  }
+  return env;
+}
+
+export function isPaystackTestMode(): boolean {
+  const fileEnv = readEnvLocal();
+  const key =
+    fileEnv.PAYSTACK_SECRET_KEY ||
+    process.env.PAYSTACK_SECRET_KEY ||
+    "";
+  const mode =
+    fileEnv.PAYSTACK_MODE ||
+    process.env.PAYSTACK_MODE ||
+    fileEnv.NEXT_PUBLIC_PAYSTACK_MODE ||
+    process.env.NEXT_PUBLIC_PAYSTACK_MODE ||
+    "";
+  return key.startsWith("sk_test_") || mode.toLowerCase() === "test";
+}
+
+export function getSecretKey(): string {
+  const fileEnv = readEnvLocal();
+  const key =
+    fileEnv.PAYSTACK_SECRET_KEY ||
+    process.env.PAYSTACK_SECRET_KEY ||
+    "";
   if (!key) {
     throw new Error("Missing PAYSTACK_SECRET_KEY environment variable (server-only).");
   }

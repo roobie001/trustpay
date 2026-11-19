@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PaystackError, verifyTransaction } from "@/lib/paystack";
+import { PaystackError, verifyTransaction, isPaystackTestMode } from "@/lib/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
@@ -19,6 +19,29 @@ async function verifyPayment(request: NextRequest, body?: Record<string, unknown
   const orderId = typeof orderIdValue === "string" ? orderIdValue.trim() : "";
 
   try {
+    const isTestMode = isPaystackTestMode();
+
+    // Fast-path for Paystack test simulations or mock references
+    if (
+      isTestMode &&
+      orderId &&
+      (reference.startsWith("test_") || reference.startsWith("sim_") || reference.startsWith("TRX_TEST_"))
+    ) {
+      const admin = getSupabaseAdmin();
+      const { data: updated, error: updateError } = await admin
+        .from("escrow_orders")
+        .update({
+          status: "HELD_IN_ESCROW",
+        })
+        .eq("id", orderId)
+        .select("status")
+        .maybeSingle();
+
+      if (!updateError && updated) {
+        return NextResponse.json({ success: true, status: updated.status, testMode: true });
+      }
+    }
+
     // Verify first so callers that only have the Paystack reference can recover
     // the associated order ID from the transaction metadata.
     const verification = await verifyTransaction(reference);

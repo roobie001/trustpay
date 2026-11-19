@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = `${BRAND_NAME} — The Neutral Escrow Bridge for Social Commerce`;
+const title = `${BRAND_NAME} — Peer-to-Peer Social Commerce Escrow`;
 const description =
-  `${BRAND_NAME} holds buyer funds securely at the midpoint until doorstep delivery is verified. Fast, link-based escrow for WhatsApp & Instagram trade in Nigeria.`;
+  `${BRAND_NAME} locks buyer funds safely at the neutral midpoint until doorstep delivery is confirmed. Fast, mobile-first escrow for WhatsApp & Instagram trade.`;
 
 export const metadata: Metadata = {
   title: {
@@ -37,13 +37,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#030712] text-slate-100 antialiased selection:bg-amber-500/20 selection:text-amber-300">
+        {children}
+      </body>
     </html>
   );
 }

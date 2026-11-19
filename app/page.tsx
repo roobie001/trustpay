@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ShieldCheck,
   Link2,
@@ -10,10 +10,26 @@ import {
   Loader2,
   TriangleAlert,
   Store,
+  Clock,
+  ArrowRight,
+  ExternalLink,
+  Lock,
+  Landmark,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  UserCheck,
+  AtSign,
+  Phone,
 } from "lucide-react";
 import { formatNaira } from "@/lib/format";
 import { NIGERIAN_BANKS } from "@/lib/banks";
 import { BRAND_NAME, VAULT_NAME, whatsappPaymentMessage } from "@/lib/constants";
+import {
+  type SellerProfile,
+  getSavedSellerProfile,
+  saveSellerProfile,
+} from "@/lib/storage";
 
 interface CreateOrderResult {
   orderId: string;
@@ -22,29 +38,60 @@ interface CreateOrderResult {
   sellerUrl: string;
   totalAmount: number;
   sellerPhone: string;
+  sellerName: string;
+  socialHandle?: string;
+  deliveryNote?: string;
 }
 
 const RECENT_ORDERS_KEY = "mediopoint_recent_orders";
 
 export default function Home() {
+  // Order specific fields
   const [itemTitle, setItemTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
-  const [sellerName, setSellerName] = useState("");
-  const [sellerPhone, setSellerPhone] = useState("");
+  const [deliveryNote, setDeliveryNote] = useState("");
+
+  // Seller profile fields
+  const [businessName, setBusinessName] = useState("");
+  const [socialHandle, setSocialHandle] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [sellerBankCode, setSellerBankCode] = useState("");
   const [sellerAccountNumber, setSellerAccountNumber] = useState("");
+  const [savedProfile, setSavedProfile] = useState<SellerProfile | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CreateOrderResult | null>(null);
-  const [copied, setCopied] = useState<"buyer" | "seller" | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [recentOrders, setRecentOrders] = useState<CreateOrderResult[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
 
+  // Bank resolution
   const [resolving, setResolving] = useState(false);
   const [resolvedAccountName, setResolvedAccountName] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
 
+  const recentDealsRef = useRef<HTMLElement | null>(null);
+
+  // Load saved seller profile and recent orders on mount
   useEffect(() => {
+    const profile = getSavedSellerProfile();
+    if (profile) {
+      setSavedProfile(profile);
+      setBusinessName(profile.businessName || "");
+      setSocialHandle(profile.socialHandle || "");
+      setWhatsappNumber(profile.whatsappNumber || "");
+      setSellerBankCode(profile.bankCode || "");
+      setSellerAccountNumber(profile.accountNumber || "");
+      setResolvedAccountName(profile.accountName || null);
+      setIsEditingProfile(false);
+    } else {
+      setIsEditingProfile(true);
+    }
+
     try {
       const saved = JSON.parse(localStorage.getItem(RECENT_ORDERS_KEY) ?? "[]");
       if (Array.isArray(saved)) setRecentOrders(saved);
@@ -53,19 +100,18 @@ export default function Home() {
     }
   }, []);
 
+  // Bank resolution effect
   useEffect(() => {
     let active = true;
 
     const timer = setTimeout(async () => {
       if (!active) return;
-      setResolvedAccountName(null);
-      setResolveError(null);
-
       if (!sellerBankCode || sellerAccountNumber.trim().length !== 10) {
         return;
       }
 
       setResolving(true);
+      setResolveError(null);
       try {
         const params = new URLSearchParams({
           account_number: sellerAccountNumber.trim(),
@@ -99,31 +145,42 @@ export default function Home() {
     const parsedAmount = Number(amount);
     const parsedDeliveryFee = deliveryFee ? Number(deliveryFee) : 0;
 
-    if (
-      !itemTitle.trim() ||
-      !sellerName.trim() ||
-      !sellerPhone.trim() ||
-      !sellerBankCode.trim() ||
-      !sellerAccountNumber.trim()
-    ) {
-      setError("Please fill in every field.");
+    const activeSellerName = businessName.trim() || savedProfile?.businessName || "";
+    const activeSellerPhone = whatsappNumber.trim() || savedProfile?.whatsappNumber || "";
+    const activeBankCode = sellerBankCode.trim() || savedProfile?.bankCode || "";
+    const activeAccountNum = sellerAccountNumber.trim() || savedProfile?.accountNumber || "";
+
+    if (!itemTitle.trim()) {
+      setError("Please enter the item or service name.");
       return;
     }
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError("Enter a valid item price.");
+      setError("Please enter a valid item price.");
       return;
     }
-    if (!Number.isFinite(parsedDeliveryFee) || parsedDeliveryFee < 0) {
-      setError("Enter a valid delivery fee.");
-      return;
-    }
-    if (!resolvedAccountName) {
-      setError("Please verify the seller's bank account before continuing.");
+    if (!activeSellerName || !activeSellerPhone || !activeBankCode || !activeAccountNum) {
+      setError("Please complete all seller payout details.");
+      setIsEditingProfile(true);
       return;
     }
 
     setLoading(true);
     try {
+      const bankName = NIGERIAN_BANKS.find((b) => b.code === activeBankCode)?.name || "Bank";
+
+      // Save/persist seller profile in localStorage
+      const newProfile: SellerProfile = {
+        businessName: activeSellerName,
+        socialHandle: socialHandle.trim(),
+        whatsappNumber: activeSellerPhone,
+        bankCode: activeBankCode,
+        bankName,
+        accountNumber: activeAccountNum,
+        accountName: resolvedAccountName || savedProfile?.accountName,
+      };
+      saveSellerProfile(newProfile);
+      setSavedProfile(newProfile);
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,10 +188,10 @@ export default function Home() {
           item_title: itemTitle.trim(),
           amount: parsedAmount,
           delivery_fee: parsedDeliveryFee,
-          seller_name: sellerName.trim(),
-          seller_phone: sellerPhone.trim(),
-          seller_bank_code: sellerBankCode,
-          seller_account_number: sellerAccountNumber.trim(),
+          seller_name: activeSellerName,
+          seller_phone: activeSellerPhone,
+          seller_bank_code: activeBankCode,
+          seller_account_number: activeAccountNum,
         }),
       });
       const json = await res.json();
@@ -148,20 +205,29 @@ export default function Home() {
         orderId: json.id,
         itemTitle: itemTitle.trim(),
         buyerUrl: `${window.location.origin}/pay/${json.id}`,
-        sellerUrl: `${window.location.origin}/order/${json.id}?key=${json.sellerKey}`,
+        sellerUrl: `${window.location.origin}/seller/${json.id}?key=${json.sellerKey}`,
         totalAmount: json.total_amount,
-        sellerPhone: sellerPhone.trim(),
+        sellerPhone: activeSellerPhone,
+        sellerName: activeSellerName,
+        socialHandle: socialHandle.trim(),
+        deliveryNote: deliveryNote.trim(),
       };
-      const nextRecentOrders = [savedOrder, ...recentOrders.filter((order) => order.orderId !== savedOrder.orderId)];
+
+      const nextRecentOrders = [
+        savedOrder,
+        ...recentOrders.filter((order) => order.orderId !== savedOrder.orderId),
+      ];
       setRecentOrders(nextRecentOrders);
       try {
         localStorage.setItem(RECENT_ORDERS_KEY, JSON.stringify(nextRecentOrders));
       } catch {
-        setError("Order created, but this browser could not save the links. Copy them now to keep access.");
+        setError(
+          "Order created, but browser could not save links. Copy them now to keep access."
+        );
       }
       setResult(savedOrder);
     } catch {
-      setError("Something went wrong. Try again.");
+      setError("Something went wrong. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -171,349 +237,594 @@ export default function Home() {
     setItemTitle("");
     setAmount("");
     setDeliveryFee("");
-    setSellerName("");
-    setSellerPhone("");
-    setSellerBankCode("");
-    setSellerAccountNumber("");
-    setResolvedAccountName(null);
-    setResolveError(null);
+    setDeliveryNote("");
     setResult(null);
     setCopied(null);
   }
 
-  async function copyLink(which: "buyer" | "seller", url: string) {
-    await navigator.clipboard.writeText(url);
-    setCopied(which);
-    setTimeout(() => setCopied(null), 2000);
-  }
-
-  async function copySavedLink(which: "buyer" | "seller", url: string) {
-    await navigator.clipboard.writeText(url);
-    setCopied(which);
-    window.setTimeout(() => setCopied(null), 2000);
+  async function copyLink(which: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (e) {
+      console.error("Failed to copy:", e);
+    }
   }
 
   const total = (Number(amount) || 0) + (Number(deliveryFee) || 0);
 
-  const whatsappMessage = result
-    ? whatsappPaymentMessage(itemTitle, result.buyerUrl)
+  const formattedWhatsAppMsg = result
+    ? `Hello! Here is your secure ${BRAND_NAME} escrow payment link for "${result.itemTitle}":\n\n💰 Total: ${formatNaira(result.totalAmount)}\n🔗 Payment Link: ${result.buyerUrl}\n\n🛡️ Your money remains 100% protected in the ${VAULT_NAME} until you inspect and approve doorstep delivery!`
     : "";
+
   const whatsappBackupMessage = result
-    ? `MedioPoint order: ${result.itemTitle}\nBuyer tracking link: ${result.buyerUrl}\nSeller dashboard link (private): ${result.sellerUrl}`
+    ? `${BRAND_NAME} Private Seller Console\nOrder: ${result.itemTitle}\nAmount: ${formatNaira(result.totalAmount)}\nSeller Dashboard Link: ${result.sellerUrl}\nBuyer Link: ${result.buyerUrl}`
     : "";
+
   const sellerPhoneDigits = result?.sellerPhone.replace(/\D/g, "") ?? "";
   const sellerWhatsappPhone = sellerPhoneDigits.startsWith("0")
     ? `234${sellerPhoneDigits.slice(1)}`
     : sellerPhoneDigits;
 
   return (
-    <div className="flex flex-1 flex-col items-center bg-zinc-50 px-4 py-10 sm:py-16">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-sm">
-            <ShieldCheck className="h-6 w-6" />
+    <div className="relative min-h-screen dot-grid text-slate-100 flex flex-col items-center px-4 py-8 sm:py-12">
+      {/* Soft ambient background glows */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-36 left-1/2 -translate-x-1/2 w-[500px] h-[350px] bg-amber-500/10 blur-[130px] rounded-full" />
+        <div className="absolute top-1/2 -right-40 w-[420px] h-[420px] bg-emerald-500/8 blur-[140px] rounded-full" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-[430px]">
+        {/* Header */}
+        <header className="mb-6 flex flex-col items-center text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-4 ring-amber-500/10">
+            <ShieldCheck className="h-6 w-6 stroke-[2.5]" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-            {BRAND_NAME}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Create a 30-second escrow link for WhatsApp &amp; Instagram sales.
+
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              {BRAND_NAME}
+            </h1>
+            <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-400 tracking-wider uppercase">
+              V2 ESCROW
+            </span>
+          </div>
+
+          <p className="mt-1 text-xs font-medium text-slate-400 max-w-xs">
+            30-second escrow links for WhatsApp &amp; Instagram deals
           </p>
-        </div>
 
-        {result ? (
-          <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-emerald-700">
-              <Check className="h-5 w-5 shrink-0" />
-              <p className="text-sm font-medium">
-                Escrow link generated! Send the buyer link to your buyer.
-              </p>
-            </div>
-
-            <p className="mb-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-              Total buyer payment: {" "}
-              <span className="font-semibold text-zinc-900">
-                {formatNaira(result.totalAmount)}
-              </span>
-            </p>
-
-            <label className="mb-1 block text-xs font-medium text-zinc-500">
-              Buyer link — share this
-            </label>
-            <div className="mb-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
-              <Link2 className="h-4 w-4 shrink-0 text-zinc-400" />
-              <span className="flex-1 truncate text-sm text-zinc-700">
-                {result.buyerUrl}
-              </span>
-            </div>
-
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-              <button
-                onClick={() => copyLink("buyer", result.buyerUrl)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
-              >
-                {copied === "buyer" ? (
-                  <Check className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-                {copied === "buyer" ? "Copied" : "Copy Link"}
-              </button>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
-              >
-                <MessageCircle className="h-4 w-4" />
-                Send Buyer Link via WhatsApp
-              </a>
-            </div>
-
-            <div className="h-px bg-zinc-100" />
-
-            <label className="mb-1 mt-4 flex items-center gap-1.5 text-xs font-medium text-zinc-500">
-              <Store className="h-3.5 w-3.5" />
-              Seller dashboard link — keep this private
-            </label>
-            <div className="mb-2 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
-              <Link2 className="h-4 w-4 shrink-0 text-zinc-400" />
-              <span className="flex-1 truncate text-sm text-zinc-700">
-                {result.sellerUrl}
-              </span>
-            </div>
-            <p className="mb-3 text-xs text-zinc-400">
-              This link lets you mark the order dispatched and is the only way
-              to manage this order later — save it now.
-            </p>
+          {/* Recent Deals Toggle Pill */}
+          {recentOrders.length > 0 && (
             <button
-              onClick={() => copyLink("seller", result.sellerUrl)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+              type="button"
+              onClick={() => {
+                setShowRecent(true);
+                setTimeout(() => recentDealsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+              }}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-[#0F172A] px-3 py-1 text-xs font-semibold text-slate-300 shadow-sm transition hover:border-amber-400/50 hover:text-amber-300"
             >
-              {copied === "seller" ? (
-                <Check className="h-4 w-4 text-emerald-600" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-              {copied === "seller" ? "Copied" : "Copy Seller Link"}
+              <Clock className="h-3.5 w-3.5 text-amber-400" />
+              <span>Recent Deals</span>
+              <span className="ml-0.5 rounded-full bg-slate-800 px-1.5 py-0.2 text-[10px] font-bold text-slate-300">
+                {recentOrders.length}
+              </span>
             </button>
+          )}
+        </header>
 
-            <a
-              href={`https://wa.me/${sellerWhatsappPhone}?text=${encodeURIComponent(whatsappBackupMessage)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Save Seller Link to WhatsApp
-            </a>
+        {/* 1. Reusable Seller Profile Status Pill */}
+        {savedProfile && !result && (
+          <div className="mb-4 rounded-xl border border-white/[0.08] bg-[#0F172A] p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <UserCheck className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white truncate">
+                      {savedProfile.businessName}
+                    </span>
+                    {savedProfile.socialHandle && (
+                      <span className="text-[10px] text-amber-400 font-mono">
+                        {savedProfile.socialHandle}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono truncate">
+                    {savedProfile.bankName} &middot; •••• {savedProfile.accountNumber.slice(-4)}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(!isEditingProfile)}
+                className="shrink-0 text-xs font-bold text-amber-400 hover:text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/30 bg-amber-500/10 transition"
+              >
+                {isEditingProfile ? "Done" : "Edit Profile"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Post-Creation Share Card View */}
+        {result ? (
+          <div className="rounded-2xl border border-white/[0.08] bg-[#0B1120] p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-emerald-300">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-slate-950 shadow-sm">
+                <Check className="h-4 w-4 stroke-[3]" />
+              </div>
+              <div>
+                <p className="text-xs font-extrabold text-white">Escrow Link Generated!</p>
+                <p className="text-[11px] text-emerald-300/90 leading-tight mt-0.5">
+                  Share the buyer link with your customer. Funds lock in the vault before dispatch.
+                </p>
+              </div>
+            </div>
+
+            {/* Deal Summary Pass */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0F172A] p-4">
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                <div className="min-w-0 pr-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Item / Deal
+                  </span>
+                  <p className="text-sm font-bold text-white truncate">{result.itemTitle}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Buyer Pays
+                  </span>
+                  <p className="font-mono text-base font-extrabold text-amber-400 tabular-nums">
+                    {formatNaira(result.totalAmount)}
+                  </p>
+                </div>
+              </div>
+              <div className="pt-2.5 flex items-center justify-between text-xs text-slate-400">
+                <span>Vendor:</span>
+                <span className="font-semibold text-slate-200">{result.sellerName}</span>
+              </div>
+            </div>
+
+            {/* Buyer Payment Link Card */}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Buyer Escrow Payment Link
+                </label>
+                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                  Share with Customer
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 py-2.5">
+                <Link2 className="h-4 w-4 shrink-0 text-slate-400" />
+                <span className="flex-1 truncate font-mono text-xs text-slate-200">
+                  {result.buyerUrl}
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => copyLink("buyer", result.buyerUrl)}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/[0.1] bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white shadow-sm transition active:scale-[0.98]"
+                >
+                  {copied === "buyer" ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      <span className="text-emerald-300">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy Link</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(formattedWhatsAppMsg)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md transition active:scale-[0.98]"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Share to WhatsApp</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Private Seller Dashboard Link */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0F172A] p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5 text-amber-400" />
+                  Private Seller Dashboard
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+                  Keep Secret
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Use this link to mark order dispatched and receive bank payout.
+              </p>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => copyLink("seller", result.sellerUrl)}
+                  className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-200 transition"
+                >
+                  {copied === "seller" ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5 text-slate-400" />
+                  )}
+                  <span>{copied === "seller" ? "Copied" : "Copy Seller Link"}</span>
+                </button>
+
+                <a
+                  href={`https://wa.me/${sellerWhatsappPhone}?text=${encodeURIComponent(
+                    whatsappBackupMessage
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-slate-800/80 hover:bg-slate-700 px-3 text-xs font-semibold text-slate-200 transition"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Save to WhatsApp</span>
+                </a>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <a
+                  href={result.sellerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 hover:text-amber-300"
+                >
+                  <span>Open Seller Dashboard</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </div>
 
             <button
+              type="button"
               onClick={resetForm}
-              className="mt-4 w-full text-center text-sm font-medium text-zinc-500 hover:text-zinc-700"
+              className="w-full h-11 rounded-xl border border-white/[0.08] bg-slate-900 text-xs font-bold text-slate-300 hover:text-white transition"
             >
-              Create another link
+              + Create Another Escrow Link
             </button>
           </div>
         ) : (
+          /* Escrow Link Form Card */
           <form
             onSubmit={handleSubmit}
-            className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"
+            className="rounded-2xl border border-white/[0.08] bg-[#0B1120] p-5 sm:p-6 shadow-2xl space-y-4"
           >
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-700">
-                  Product Name
-                </label>
-                <input
-                  type="text"
-                  value={itemTitle}
-                  onChange={(e) => setItemTitle(e.target.value)}
-                  placeholder="e.g. Nike Dunk Low Retro"
-                  className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
+            {/* Quick Order Fields */}
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                Item / Service Name
+              </label>
+              <input
+                type="text"
+                value={itemTitle}
+                onChange={(e) => setItemTitle(e.target.value)}
+                placeholder="e.g. Nike Dunk Low Retro (Size 43)"
+                className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3.5 text-xs sm:text-sm font-medium text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
+              />
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700">
-                    Item Price (₦)
-                  </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                  Price (₦)
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs font-bold text-slate-500">
+                    ₦
+                  </span>
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    placeholder="25000"
-                    className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    placeholder="35,000"
+                    className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700">
-                    Delivery Fee (₦)
-                  </label>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                  Delivery Fee (₦)
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs font-bold text-slate-500">
+                    ₦
+                  </span>
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
                     value={deliveryFee}
                     onChange={(e) => setDeliveryFee(e.target.value)}
-                    placeholder="1500"
-                    className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    placeholder="2,000"
+                    className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
                   />
                 </div>
               </div>
+            </div>
 
-              {total > 0 && (
-                <p className="text-xs text-zinc-500">
-                  Buyer will pay a total of{" "}
-                  <span className="font-semibold text-zinc-700">
-                    {formatNaira(total)}
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                Optional Delivery Note
+              </label>
+              <input
+                type="text"
+                value={deliveryNote}
+                onChange={(e) => setDeliveryNote(e.target.value)}
+                placeholder="e.g. Express courier to Lekki Phase 1"
+                className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3.5 text-xs font-medium text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400"
+              />
+            </div>
+
+            {/* Live Total Breakdown Pill */}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-2.5 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300">Buyer Pays Total:</span>
+              <span className="font-mono text-base font-extrabold text-amber-400 tabular-nums">
+                {formatNaira(total)}
+              </span>
+            </div>
+
+            {/* Collapsible / Editable Seller Profile Form */}
+            {(isEditingProfile || !savedProfile) && (
+              <div className="pt-3 border-t border-white/[0.06] space-y-3.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    Seller Payout Profile
                   </span>
-                </p>
-              )}
-
-              <div className="h-px bg-zinc-100" />
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-700">
-                  Seller Name
-                </label>
-                <input
-                  type="text"
-                  value={sellerName}
-                  onChange={(e) => setSellerName(e.target.value)}
-                  placeholder="Your name or store name"
-                  className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-700">
-                  WhatsApp Phone
-                </label>
-                <input
-                  type="tel"
-                  value={sellerPhone}
-                  onChange={(e) => setSellerPhone(e.target.value)}
-                  placeholder="e.g. 08012345678"
-                  className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700">
-                    Payout Bank
-                  </label>
-                  <select
-                    value={sellerBankCode}
-                    onChange={(e) => setSellerBankCode(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-3.5 py-2.5 text-sm text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="" disabled>
-                      Select bank
-                    </option>
-                    {NIGERIAN_BANKS.map((bank) => (
-                      <option key={bank.code} value={bank.code}>
-                        {bank.name}
-                      </option>
-                    ))}
-                  </select>
+                  {savedProfile && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProfile(false)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    >
+                      Hide
+                    </button>
+                  )}
                 </div>
+
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700">
-                    Account Number
+                  <label className="mb-1 block text-xs font-semibold text-slate-300">
+                    Store or Brand Name
                   </label>
                   <input
                     type="text"
-                    inputMode="numeric"
-                    maxLength={10}
-                    value={sellerAccountNumber}
-                    onChange={(e) =>
-                      setSellerAccountNumber(e.target.value.replace(/\D/g, ""))
-                    }
-                    placeholder="0123456789"
-                    className="w-full rounded-xl border border-zinc-300 px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="e.g. Lagos Drips Store"
+                    className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
                   />
                 </div>
-              </div>
 
-              {sellerBankCode && sellerAccountNumber.length === 10 && (
-                <p className="flex items-center gap-1.5 text-xs font-medium">
-                  {resolving && (
-                    <span className="flex items-center gap-1.5 text-zinc-500">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Verifying account with NIBSS...
-                    </span>
-                  )}
-                  {!resolving && resolvedAccountName && (
-                    <span className="flex items-center gap-1.5 text-emerald-600">
-                      <Check className="h-3.5 w-3.5 shrink-0" />
-                      Verified Beneficiary: {resolvedAccountName.toUpperCase()}{" "}
-                      (NIBSS Verified)
-                    </span>
-                  )}
-                  {!resolving && resolveError && (
-                    <span className="flex items-center gap-1.5 text-red-600">
-                      <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-                      {resolveError}
-                    </span>
-                  )}
-                </p>
-              )}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                      Social Handle
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs">
+                        @
+                      </span>
+                      <input
+                        type="text"
+                        value={socialHandle}
+                        onChange={(e) => setSocialHandle(e.target.value.replace(/^@/, ""))}
+                        placeholder="instagram/tiktok"
+                        className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-6 pr-2.5 text-xs text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
 
-              {error && (
-                <p className="text-sm font-medium text-red-600">{error}</p>
-              )}
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                      WhatsApp Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={whatsappNumber}
+                      onChange={(e) => setWhatsappNumber(e.target.value)}
+                      placeholder="08012345678"
+                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs font-mono tabular-nums text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ShieldCheck className="h-4 w-4" />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                      Payout Bank
+                    </label>
+                    <select
+                      value={sellerBankCode}
+                      onChange={(e) => setSellerBankCode(e.target.value)}
+                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-2 text-xs text-white outline-none focus:border-amber-400"
+                    >
+                      <option value="" disabled>
+                        Select Bank
+                      </option>
+                      {NIGERIAN_BANKS.map((b) => (
+                        <option key={b.code} value={b.code}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={sellerAccountNumber}
+                      onChange={(e) =>
+                        setSellerAccountNumber(e.target.value.replace(/\D/g, ""))
+                      }
+                      placeholder="10-digit NUBAN"
+                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs font-mono tabular-nums text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Account verification badge */}
+                {sellerBankCode && sellerAccountNumber.length === 10 && (
+                  <div>
+                    {resolving && (
+                      <div className="flex items-center gap-2 rounded-lg bg-slate-900 p-2 text-xs text-slate-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />
+                        <span>Verifying account with NIBSS...</span>
+                      </div>
+                    )}
+                    {!resolving && resolvedAccountName && (
+                      <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-2 text-xs font-bold text-emerald-300">
+                        <Check className="h-3.5 w-3.5 text-emerald-400 stroke-[3]" />
+                        <span className="truncate">✓ VERIFIED: {resolvedAccountName}</span>
+                      </div>
+                    )}
+                    {!resolving && resolveError && (
+                      <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/30 p-2 text-xs text-rose-300">
+                        <TriangleAlert className="h-3.5 w-3.5 text-rose-400" />
+                        <span>{resolveError}</span>
+                      </div>
+                    )}
+                  </div>
                 )}
-                {loading ? "Generating..." : "Generate 30-Sec Escrow Link"}
-              </button>
-            </div>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {error && (
+              <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-semibold text-rose-300">
+                <TriangleAlert className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Primary Gold CTA */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex min-h-[44px] h-12 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-extrabold shadow-lg shadow-amber-500/20 transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Generating Escrow Link...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Create Escrow Link</span>
+                </>
+              )}
+            </button>
           </form>
         )}
 
-        <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-900">Recent Orders &amp; Links</h2>
+        {/* Recent Orders Section */}
+        <section
+          ref={recentDealsRef}
+          className="mt-6 rounded-2xl border border-white/[0.08] bg-[#0B1120] p-5 shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div className="flex items-center gap-2">
+              <Store className="h-4 w-4 text-amber-400" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Recent Deals on this Device
+              </h2>
+            </div>
+            {recentOrders.length > 0 && (
+              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-400">
+                {recentOrders.length}
+              </span>
+            )}
+          </div>
+
           {recentOrders.length === 0 ? (
-            <p className="mt-2 text-sm text-zinc-500">Generated orders and their links will be saved here on this device.</p>
+            <p className="py-6 text-center text-xs text-slate-500">
+              No recent escrow links created on this device yet.
+            </p>
           ) : (
-            <ul className="mt-3 space-y-3">
-              {recentOrders.map((order) => (
-                <li key={order.orderId} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-                  <p className="truncate text-sm font-medium text-zinc-900">{order.itemTitle}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{formatNaira(order.totalAmount)}</p>
-                  <div className="mt-2 flex gap-2">
-                    <button onClick={() => void copySavedLink("buyer", order.buyerUrl)} className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-xs font-medium text-zinc-700">Copy Buyer Link</button>
-                    <a href={order.buyerUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-xs font-medium text-zinc-700">Open Tracking</a>
-                  </div>
-                  {order.sellerUrl && (
-                    <div className="mt-2 flex gap-2">
-                      <button onClick={() => void copySavedLink("seller", order.sellerUrl)} className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-xs font-medium text-zinc-700">Copy Seller Link</button>
-                      <a href={order.sellerUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-2 text-center text-xs font-medium text-zinc-700">Open Dashboard</a>
+            <div className="mt-3 space-y-2.5">
+              {recentOrders.map((order) => {
+                const buyerCopiedKey = `recent-buyer-${order.orderId}`;
+                return (
+                  <div
+                    key={order.orderId}
+                    className="rounded-xl border border-white/[0.06] bg-[#0F172A] p-3 text-xs space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white truncate max-w-[180px]">
+                        {order.itemTitle}
+                      </span>
+                      <span className="font-mono font-bold text-amber-400 tabular-nums">
+                        {formatNaira(order.totalAmount)}
+                      </span>
                     </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => copyLink(buyerCopiedKey, order.buyerUrl)}
+                        className="flex-1 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1 transition"
+                      >
+                        {copied === buyerCopiedKey ? (
+                          <Check className="h-3 w-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                        <span>{copied === buyerCopiedKey ? "Copied" : "Copy Buyer Link"}</span>
+                      </button>
+
+                      <a
+                        href={order.buyerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 flex items-center justify-center gap-1 transition"
+                      >
+                        <span>Open</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-zinc-400">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Funds are held in the {VAULT_NAME} until the buyer confirms delivery.
-        </p>
+        {/* Footer */}
+        <footer className="mt-8 mb-6 text-center text-xs text-slate-500">
+          <div className="flex items-center justify-center gap-1.5 text-slate-400 mb-1">
+            <ShieldCheck className="h-4 w-4 text-amber-400" />
+            <span className="font-semibold text-white">{BRAND_NAME} Neutral Escrow Bridge</span>
+          </div>
+          <p className="text-[11px]">
+            Funds held securely in {VAULT_NAME} until doorstep verification.
+          </p>
+        </footer>
       </div>
     </div>
   );

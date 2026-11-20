@@ -18,18 +18,24 @@ import {
   Lock,
   ExternalLink,
   X,
+  MapPin,
+  Copy,
+  PhoneCall,
+  MessageCircle,
 } from "lucide-react";
 import { supabase, type EscrowOrder } from "@/lib/supabase";
-import { formatNaira } from "@/lib/format";
+import { formatNaira, getDeliveryHandoverPin } from "@/lib/format";
 import { maskAccountNumber } from "@/lib/banks";
 import { PLATFORM_FEE_RATE } from "@/lib/fees";
 import { BRAND_NAME, DEMO_DISPUTE_REFERENCE, VAULT_NAME } from "@/lib/constants";
 import {
   type DispatchInfo,
   type BuyerProfile,
+  type OrderDeliveryDetails,
   getOrderDispatchInfo,
   saveOrderDispatchInfo,
   getSavedBuyerProfile,
+  getOrderDeliveryDetails,
   getOrderTimestamps,
   updateOrderTimestamps,
 } from "@/lib/storage";
@@ -67,6 +73,18 @@ export default function SellerPage({
   // Dispute & Receipts
   const [showDisputeDrawer, setShowDisputeDrawer] = useState(false);
   const [savedBuyer, setSavedBuyer] = useState<BuyerProfile | null>(null);
+  const [orderDelivery, setOrderDelivery] = useState<OrderDeliveryDetails | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+
+  async function handleCopyAddress(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAddress(true);
+      setTimeout(() => setCopiedAddress(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy address:", err);
+    }
+  }
 
   // Verify seller secret key server-side
   useEffect(() => {
@@ -98,6 +116,9 @@ export default function SellerPage({
 
     const bProfile = getSavedBuyerProfile();
     if (bProfile) setSavedBuyer(bProfile);
+
+    const dDetails = getOrderDeliveryDetails(id);
+    if (dDetails) setOrderDelivery(dDetails);
   }, [id]);
 
   // Load and poll order data
@@ -349,6 +370,186 @@ export default function SellerPage({
           netPayout={netPayout}
           isDisputed={isDisputed}
         />
+
+        {/* 1. Unlock Buyer Delivery Details in Seller View (Post-Payment) */}
+        {currentRole === "seller" && order.status !== "PENDING_PAYMENT" && (
+          <div className="rounded-2xl border border-white/[0.08] bg-[#0B1120] p-5 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                  Buyer Delivery Destination
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                Funds Locked in Vault
+              </span>
+            </div>
+
+            <div className="rounded-xl bg-[#060A14] border border-white/10 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Recipient
+                </span>
+                <span className="text-xs font-bold text-white">
+                  {order.buyer_name || orderDelivery?.fullName || savedBuyer?.fullName || "Verified Customer"}
+                </span>
+              </div>
+
+              <div className="border-t border-white/[0.06] pt-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Doorstep Address &amp; Landmark
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyAddress(
+                        `${orderDelivery?.deliveryAddress || savedBuyer?.deliveryAddress || "Doorstep Address on file with Escrow"}${
+                          orderDelivery?.landmark || savedBuyer?.landmark
+                            ? ` (Landmark: ${orderDelivery?.landmark || savedBuyer?.landmark})`
+                            : ""
+                        }`
+                      )
+                    }
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 transition"
+                  >
+                    {copiedAddress ? (
+                      <>
+                        <Check className="h-3 w-3 text-emerald-400" />
+                        <span className="text-emerald-400">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3" />
+                        <span>Copy Address</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-200 font-medium leading-relaxed">
+                  {orderDelivery?.deliveryAddress || savedBuyer?.deliveryAddress || "Doorstep Address on file with Escrow"}
+                </p>
+                {(orderDelivery?.landmark || savedBuyer?.landmark) && (
+                  <p className="text-[11px] text-amber-400/90 mt-1 font-mono">
+                    Landmark: {orderDelivery?.landmark || savedBuyer?.landmark}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Buyer Contact Actions: Call & WhatsApp */}
+            <div className="flex items-center gap-2 pt-1">
+              <a
+                href={
+                  (order.buyer_phone || orderDelivery?.phoneNumber || savedBuyer?.phoneNumber)
+                    ? `tel:${(order.buyer_phone || orderDelivery?.phoneNumber || savedBuyer?.phoneNumber)?.replace(/\D/g, "")}`
+                    : "#"
+                }
+                className="flex-1 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/[0.08] text-xs font-bold text-slate-200 transition flex items-center justify-center gap-1.5"
+              >
+                <PhoneCall className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Call Buyer</span>
+              </a>
+
+              <a
+                href={
+                  (() => {
+                    const rawDigits = (order.buyer_phone || orderDelivery?.phoneNumber || savedBuyer?.phoneNumber || "").replace(/\D/g, "");
+                    const intlPhone = rawDigits.startsWith("0") ? `234${rawDigits.slice(1)}` : rawDigits;
+                    return intlPhone
+                      ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(
+                          `Hello ${order.buyer_name || orderDelivery?.fullName || savedBuyer?.fullName || "Customer"}, regarding your order for "${order.item_title}" on ${BRAND_NAME} Escrow:`
+                        )}`
+                      : "#";
+                  })()
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-extrabold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                <span>WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden notice while still awaiting deposit */}
+        {currentRole === "seller" && order.status === "PENDING_PAYMENT" && (
+          <div className="rounded-2xl border border-white/[0.08] bg-[#0B1120] p-4 text-xs text-slate-400 flex items-center gap-2.5">
+            <Lock className="h-4 w-4 text-amber-400 shrink-0" />
+            <span>Buyer delivery address &amp; contact unlock once buyer locks funds into the escrow vault.</span>
+          </div>
+        )}
+
+        {/* Seller View: Courier Handover & PIN Verification Details */}
+        {currentRole === "seller" && order.status === "DISPATCHED" && (
+          <div className="rounded-2xl border border-white/[0.08] bg-[#0B1120] p-4 sm:p-5 shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-amber-400" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                  Courier Handover &amp; Transit
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                In Transit
+              </span>
+            </div>
+
+            {dispatchInfo?.riderPhone ? (
+              <div className="flex items-center justify-between rounded-xl bg-[#060A14] border border-white/10 p-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                    Rider Contact
+                  </span>
+                  <span className="font-mono font-bold text-white tabular-nums">
+                    {dispatchInfo.riderPhone}
+                  </span>
+                  {dispatchInfo.trackingCode && (
+                    <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
+                      Waybill: {dispatchInfo.trackingCode}
+                    </span>
+                  )}
+                </div>
+                <a
+                  href={`tel:${dispatchInfo.riderPhone.replace(/\D/g, "")}`}
+                  className="h-8 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-white/[0.08] flex items-center gap-1 transition"
+                >
+                  <PhoneCall className="h-3 w-3" />
+                  <span>Call Rider</span>
+                </a>
+              </div>
+            ) : null}
+
+            <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-200/90 leading-relaxed">
+              <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-white">4-Digit Delivery Handover PIN Active</p>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  The buyer has a unique 4-digit Delivery Handover PIN. Inform your dispatch rider to collect this PIN upon parcel handover, after which the buyer confirms delivery to release your payout.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Anti-Fraud Delivery Handover PIN Badge (Buyer View when Dispatched) */}
+        {currentRole === "buyer" && order.status === "DISPATCHED" && (
+          <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/15 to-amber-500/5 p-4 sm:p-5 shadow-xl text-center space-y-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>Delivery Handover PIN</span>
+            </div>
+            <div className="font-mono text-3xl sm:text-4xl font-black tracking-widest text-amber-300 tabular-nums">
+              {getDeliveryHandoverPin(order.id)}
+            </div>
+            <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
+              Share this PIN with the dispatch rider <span className="font-bold text-white">only when your item arrives</span> and has been inspected.
+            </p>
+          </div>
+        )}
 
         {/* Completed Escrow Receipt Screen or Stepper */}
         {order.status === "FUNDS_RELEASED" ? (

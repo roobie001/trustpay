@@ -11,6 +11,8 @@ import {
   ShieldAlert,
   Clock,
   Trash2,
+  Scale,
+  FileCheck,
 } from "lucide-react";
 import {
   type DisputeInfo,
@@ -28,12 +30,11 @@ interface DisputeDrawerProps {
   currentUserRole: "buyer" | "seller";
 }
 
-const COMMON_REASONS = [
-  "Item not received at doorstep",
-  "Damaged, defective or incorrect item",
-  "Vendor unresponsive regarding delivery",
-  "Courier fee / delivery dispute",
-  "Other order discrepancy",
+const STRUCTURED_REASONS = [
+  "Item not delivered",
+  "Wrong or damaged item",
+  "Seller delayed dispatch",
+  "Other",
 ];
 
 export function DisputeDrawer({
@@ -45,7 +46,7 @@ export function DisputeDrawer({
   currentUserRole,
 }: DisputeDrawerProps) {
   const [dispute, setDispute] = useState<DisputeInfo | null>(null);
-  const [selectedReason, setSelectedReason] = useState(COMMON_REASONS[0]);
+  const [selectedReason, setSelectedReason] = useState(STRUCTURED_REASONS[0]);
   const [customNote, setCustomNote] = useState("");
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [isResolving, setIsResolving] = useState(false);
@@ -56,16 +57,16 @@ export function DisputeDrawer({
     const existing = getOrderDisputeInfo(orderId);
     if (existing) {
       setDispute(existing);
-      setSelectedReason(existing.reason || COMMON_REASONS[0]);
+      setSelectedReason(existing.reason || STRUCTURED_REASONS[0]);
       setPreviewImages(existing.evidenceImages || []);
     } else {
       const initial: DisputeInfo = {
-        reason: COMMON_REASONS[0],
+        reason: STRUCTURED_REASONS[0],
         notes: [
           {
             id: "initial-note",
             sender: currentUserRole,
-            text: `Dispute opened: ${COMMON_REASONS[0]}`,
+            text: `Dispute opened: ${STRUCTURED_REASONS[0]}`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ],
@@ -193,16 +194,16 @@ export function DisputeDrawer({
 
         {/* Dispute Reason Selector */}
         <div className="mt-4">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
             Dispute Reason
           </label>
-          <div className="grid grid-cols-1 gap-1.5">
-            {COMMON_REASONS.map((r) => (
+          <div className="grid grid-cols-2 gap-2">
+            {STRUCTURED_REASONS.map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => handleReasonSelect(r)}
-                className={`text-left text-xs px-3 py-2 rounded-xl border transition-all ${
+                className={`text-left text-xs px-3 py-2.5 rounded-xl border transition-all ${
                   selectedReason === r
                     ? "border-rose-500/50 bg-rose-500/15 text-rose-300 font-semibold"
                     : "border-white/[0.08] bg-slate-900/60 text-slate-400 hover:text-slate-200"
@@ -212,6 +213,37 @@ export function DisputeDrawer({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Escrow Settlement Criteria Info Box */}
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-400">
+            <Scale className="h-4 w-4" />
+            <span>Escrow Settlement Criteria</span>
+          </div>
+          <p className="text-[11px] text-slate-300 leading-relaxed">
+            Funds remain securely held in the vault until both parties resolve or mediation settles based on:
+          </p>
+          <ul className="text-[11px] text-slate-300 space-y-1.5 pl-1">
+            <li className="flex items-start gap-1.5">
+              <span className="font-bold text-amber-400">1.</span>
+              <span>
+                <strong className="text-white font-semibold">Seller Dispatch Proof:</strong> Verified rider phone contact and courier waybill/dispatch receipt.
+              </span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="font-bold text-amber-400">2.</span>
+              <span>
+                <strong className="text-white font-semibold">Buyer Unboxing Evidence:</strong> Timestamped photo evidence and notes logged in this thread.
+              </span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="font-bold text-amber-400">3.</span>
+              <span>
+                <strong className="text-white font-semibold">Order Description &amp; Window:</strong> Verification against the original agreed item title and delivery note.
+              </span>
+            </li>
+          </ul>
         </div>
 
         {/* Evidence Photo Upload */}
@@ -280,7 +312,7 @@ export function DisputeDrawer({
                 }`}
               >
                 <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  <span>{note.sender === "buyer" ? "Buyer (Chioma)" : "Vendor (Lagos Drips)"}</span>
+                  <span>{note.sender === "buyer" ? "Buyer" : "Vendor"}</span>
                   <span className="font-mono">{note.timestamp}</span>
                 </div>
                 <p className="leading-relaxed">{note.text}</p>

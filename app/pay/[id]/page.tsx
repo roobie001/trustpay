@@ -26,13 +26,14 @@ import {
   Zap,
 } from "lucide-react";
 import { supabase, type EscrowOrder } from "@/lib/supabase";
-import { formatNaira } from "@/lib/format";
+import { formatNaira, getDeliveryHandoverPin } from "@/lib/format";
 import { BRAND_NAME, DEMO_DISPUTE_REFERENCE, VAULT_NAME } from "@/lib/constants";
 import {
   type BuyerProfile,
   type DispatchInfo,
   getSavedBuyerProfile,
   saveBuyerProfile,
+  saveOrderDeliveryDetails,
   getOrderDispatchInfo,
   getOrderDisputeInfo,
   getOrderTimestamps,
@@ -193,6 +194,13 @@ export default function PayPage({
         body: JSON.stringify({ orderId: order.id, reference: testReference }),
       });
 
+      saveOrderDeliveryDetails(order.id, {
+        fullName: activeName,
+        phoneNumber: activePhone,
+        deliveryAddress: activeAddress,
+        landmark: landmark.trim(),
+      });
+
       updateOrderTimestamps(order.id, {
         depositedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }),
       });
@@ -296,6 +304,13 @@ export default function PayPage({
             console.error("Failed to verify Paystack payment:", verificationError);
           }
         }
+
+        saveOrderDeliveryDetails(order.id, {
+          fullName: activeName,
+          phoneNumber: activePhone,
+          deliveryAddress: activeAddress,
+          landmark: landmark.trim(),
+        });
 
         updateOrderTimestamps(order.id, {
           depositedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }),
@@ -438,6 +453,22 @@ export default function PayPage({
               >
                 <span>Open Dispute &amp; Evidence Panel</span>
               </button>
+            </div>
+          )}
+
+          {/* 2. Anti-Fraud Delivery Handover PIN Badge (Buyer View when Dispatched) */}
+          {currentRole === "buyer" && order.status === "DISPATCHED" && (
+            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/15 to-amber-500/5 p-4 sm:p-5 shadow-xl text-center space-y-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Delivery Handover PIN</span>
+              </div>
+              <div className="font-mono text-3xl sm:text-4xl font-black tracking-widest text-amber-300 tabular-nums">
+                {getDeliveryHandoverPin(order.id)}
+              </div>
+              <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
+                Share this PIN with the dispatch rider <span className="font-bold text-white">only when your item arrives</span> and has been inspected.
+              </p>
             </div>
           )}
 

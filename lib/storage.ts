@@ -46,6 +46,13 @@ export interface OrderTimestamps {
   releasedAt?: string;
 }
 
+export interface OrderDeliveryDetails {
+  fullName: string;
+  phoneNumber: string;
+  deliveryAddress: string;
+  landmark?: string;
+}
+
 const SELLER_PROFILE_KEY = "mediopoint_seller_profile";
 const LEGACY_SELLER_PROFILE_KEY = "trustpay_seller_profile";
 const BUYER_PROFILE_KEY = "mediopoint_buyer_profile";
@@ -86,6 +93,27 @@ export function saveBuyerProfile(profile: BuyerProfile): void {
     localStorage.setItem(BUYER_PROFILE_KEY, JSON.stringify(profile));
   } catch (e) {
     console.warn("Failed to save buyer profile:", e);
+  }
+}
+
+export function saveOrderDeliveryDetails(orderId: string, details: OrderDeliveryDetails): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`mediopoint_delivery_${orderId}`, JSON.stringify(details));
+  } catch (e) {
+    console.warn("Failed to save order delivery details:", e);
+  }
+}
+
+export function getOrderDeliveryDetails(orderId: string): OrderDeliveryDetails | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw =
+      localStorage.getItem(`mediopoint_delivery_${orderId}`) ||
+      localStorage.getItem(`trustpay_delivery_${orderId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
 }
 

@@ -38,6 +38,7 @@ import {
   getOrderTimestamps,
   updateOrderTimestamps,
 } from "@/lib/storage";
+import { MediopointLogo } from "@/components/MediopointLogo";
 import { HeroVaultCard } from "@/components/HeroVaultCard";
 import { LiveStepper } from "@/components/LiveStepper";
 import { TrustBar } from "@/components/TrustBar";
@@ -524,9 +525,7 @@ export default function PayPage({
       <div className="relative z-10 w-full max-w-[430px] space-y-4">
         {/* Deal Header */}
         <header className="flex flex-col items-center text-center mb-1">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-4 ring-amber-500/10">
-            <ShieldCheck className="h-6 w-6 stroke-[2.5]" />
-          </div>
+          <MediopointLogo className="mb-3 h-12 w-12" />
           <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
             {order.item_title}
           </h1>

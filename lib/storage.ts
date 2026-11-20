@@ -46,13 +46,15 @@ export interface OrderTimestamps {
   releasedAt?: string;
 }
 
-const SELLER_PROFILE_KEY = "trustpay_seller_profile";
-const BUYER_PROFILE_KEY = "trustpay_buyer_profile";
+const SELLER_PROFILE_KEY = "mediopoint_seller_profile";
+const LEGACY_SELLER_PROFILE_KEY = "trustpay_seller_profile";
+const BUYER_PROFILE_KEY = "mediopoint_buyer_profile";
+const LEGACY_BUYER_PROFILE_KEY = "trustpay_buyer_profile";
 
 export function getSavedSellerProfile(): SellerProfile | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(SELLER_PROFILE_KEY);
+    const raw = localStorage.getItem(SELLER_PROFILE_KEY) || localStorage.getItem(LEGACY_SELLER_PROFILE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -71,7 +73,7 @@ export function saveSellerProfile(profile: SellerProfile): void {
 export function getSavedBuyerProfile(): BuyerProfile | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(BUYER_PROFILE_KEY);
+    const raw = localStorage.getItem(BUYER_PROFILE_KEY) || localStorage.getItem(LEGACY_BUYER_PROFILE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -90,7 +92,9 @@ export function saveBuyerProfile(profile: BuyerProfile): void {
 export function getOrderDispatchInfo(orderId: string): DispatchInfo | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(`trustpay_dispatch_${orderId}`);
+    const raw =
+      localStorage.getItem(`mediopoint_dispatch_${orderId}`) ||
+      localStorage.getItem(`trustpay_dispatch_${orderId}`);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -100,7 +104,7 @@ export function getOrderDispatchInfo(orderId: string): DispatchInfo | null {
 export function saveOrderDispatchInfo(orderId: string, info: DispatchInfo): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(`trustpay_dispatch_${orderId}`, JSON.stringify(info));
+    localStorage.setItem(`mediopoint_dispatch_${orderId}`, JSON.stringify(info));
   } catch (e) {
     console.warn("Failed to save dispatch info:", e);
   }
@@ -109,7 +113,9 @@ export function saveOrderDispatchInfo(orderId: string, info: DispatchInfo): void
 export function getOrderDisputeInfo(orderId: string): DisputeInfo | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(`trustpay_dispute_${orderId}`);
+    const raw =
+      localStorage.getItem(`mediopoint_dispute_${orderId}`) ||
+      localStorage.getItem(`trustpay_dispute_${orderId}`);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -119,7 +125,7 @@ export function getOrderDisputeInfo(orderId: string): DisputeInfo | null {
 export function saveOrderDisputeInfo(orderId: string, info: DisputeInfo): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(`trustpay_dispute_${orderId}`, JSON.stringify(info));
+    localStorage.setItem(`mediopoint_dispute_${orderId}`, JSON.stringify(info));
   } catch (e) {
     console.warn("Failed to save dispute info:", e);
   }
@@ -128,7 +134,9 @@ export function saveOrderDisputeInfo(orderId: string, info: DisputeInfo): void {
 export function getOrderTimestamps(orderId: string): OrderTimestamps {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(`trustpay_timestamps_${orderId}`);
+    const raw =
+      localStorage.getItem(`mediopoint_timestamps_${orderId}`) ||
+      localStorage.getItem(`trustpay_timestamps_${orderId}`);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -140,7 +148,7 @@ export function updateOrderTimestamps(orderId: string, updates: Partial<OrderTim
   try {
     const current = getOrderTimestamps(orderId);
     const updated = { ...current, ...updates };
-    localStorage.setItem(`trustpay_timestamps_${orderId}`, JSON.stringify(updated));
+    localStorage.setItem(`mediopoint_timestamps_${orderId}`, JSON.stringify(updated));
   } catch (e) {
     console.warn("Failed to update timestamps:", e);
   }

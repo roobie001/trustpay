@@ -1,6 +1,7 @@
 "use client";
 
 import { ShieldCheck, Truck, PackageCheck, ChevronRight } from "lucide-react";
+import { BRAND_NAME } from "@/lib/constants";
 
 export function TrustBar() {
   const steps = [
@@ -26,7 +27,7 @@ export function TrustBar() {
       <div className="flex items-center gap-2 mb-3">
         <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0" />
         <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-          TrustPay 3-Step Buyer Protection
+          {BRAND_NAME} 3-Step Buyer Protection
         </span>
       </div>
 

@@ -30,6 +30,7 @@ import {
   getSavedSellerProfile,
   saveSellerProfile,
 } from "@/lib/storage";
+import { MediopointLogo } from "@/components/MediopointLogo";
 
 interface CreateOrderResult {
   orderId: string;
@@ -278,22 +279,24 @@ export default function Home() {
       <div className="relative z-10 w-full max-w-[430px]">
         {/* Header */}
         <header className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-4 ring-amber-500/10">
-            <ShieldCheck className="h-6 w-6 stroke-[2.5]" />
-          </div>
+          <MediopointLogo className="mb-3.5 h-12 w-12" />
 
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {BRAND_NAME}
-            </h1>
-            <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-400 tracking-wider uppercase">
-              V2 ESCROW
-            </span>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+            {BRAND_NAME}
+          </h1>
 
           <p className="mt-1 text-xs font-medium text-slate-400 max-w-xs">
             30-second escrow links for WhatsApp &amp; Instagram deals
           </p>
+
+          {/* Emerald Trust Indicator */}
+          <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-300 shadow-sm">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+            </span>
+            <span>Funds Locked Until Delivery</span>
+          </div>
 
           {/* Recent Deals Toggle Pill */}
           {recentOrders.length > 0 && (
@@ -510,7 +513,7 @@ export default function Home() {
           >
             {/* Quick Order Fields */}
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                 Item / Service Name
               </label>
               <input
@@ -518,13 +521,13 @@ export default function Home() {
                 value={itemTitle}
                 onChange={(e) => setItemTitle(e.target.value)}
                 placeholder="e.g. Nike Dunk Low Retro (Size 43)"
-                className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3.5 text-xs sm:text-sm font-medium text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
+                className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3.5 text-xs sm:text-sm font-medium text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Price (₦)
                 </label>
                 <div className="relative">
@@ -538,13 +541,13 @@ export default function Home() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="35,000"
-                    className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums tracking-normal text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Delivery Fee (₦)
                 </label>
                 <div className="relative">
@@ -558,14 +561,14 @@ export default function Home() {
                     value={deliveryFee}
                     onChange={(e) => setDeliveryFee(e.target.value)}
                     placeholder="2,000"
-                    className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/10"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] pl-7 pr-3 text-xs sm:text-sm font-medium font-mono tabular-nums tracking-normal text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                   />
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                 Optional Delivery Note
               </label>
               <input
@@ -573,14 +576,22 @@ export default function Home() {
                 value={deliveryNote}
                 onChange={(e) => setDeliveryNote(e.target.value)}
                 placeholder="e.g. Express courier to Lekki Phase 1"
-                className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3.5 text-xs font-medium text-white placeholder:text-slate-500 outline-none transition focus:border-amber-400"
+                className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3.5 text-xs font-medium text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
               />
             </div>
 
             {/* Live Total Breakdown Pill */}
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-2.5 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300">Buyer Pays Total:</span>
-              <span className="font-mono text-base font-extrabold text-amber-400 tabular-nums">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-3 flex items-center justify-between">
+              <div>
+                <span className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Buyer Pays Total:
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 mt-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                  100% Locked in Escrow
+                </span>
+              </div>
+              <span className="font-mono text-base sm:text-lg font-extrabold text-amber-400 tabular-nums tracking-normal">
                 {formatNaira(total)}
               </span>
             </div>
@@ -589,7 +600,7 @@ export default function Home() {
             {(isEditingProfile || !savedProfile) && (
               <div className="pt-3 border-t border-white/[0.06] space-y-3.5 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
                     Seller Payout Profile
                   </span>
                   {savedProfile && (
@@ -604,7 +615,7 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-300">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                     Store or Brand Name
                   </label>
                   <input
@@ -612,17 +623,17 @@ export default function Home() {
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     placeholder="e.g. Lagos Drips Store"
-                    className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3.5 text-xs sm:text-sm text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Social Handle
                     </label>
                     <div className="relative">
-                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">
                         @
                       </span>
                       <input
@@ -630,13 +641,13 @@ export default function Home() {
                         value={socialHandle}
                         onChange={(e) => setSocialHandle(e.target.value.replace(/^@/, ""))}
                         placeholder="instagram/tiktok"
-                        className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] pl-6 pr-2.5 text-xs text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                        className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] pl-7 pr-3 text-xs sm:text-sm text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       WhatsApp Phone
                     </label>
                     <input
@@ -644,20 +655,20 @@ export default function Home() {
                       value={whatsappNumber}
                       onChange={(e) => setWhatsappNumber(e.target.value)}
                       placeholder="08012345678"
-                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs font-mono tabular-nums text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3.5 text-xs sm:text-sm font-mono tabular-nums tracking-normal text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Payout Bank
                     </label>
                     <select
                       value={sellerBankCode}
                       onChange={(e) => setSellerBankCode(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-2 text-xs text-white outline-none focus:border-amber-400"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3 text-xs sm:text-sm text-white shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                     >
                       <option value="" disabled>
                         Select Bank
@@ -671,7 +682,7 @@ export default function Home() {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-300">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Account Number
                     </label>
                     <input
@@ -683,7 +694,7 @@ export default function Home() {
                         setSellerAccountNumber(e.target.value.replace(/\D/g, ""))
                       }
                       placeholder="10-digit NUBAN"
-                      className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#0F172A] px-3 text-xs font-mono tabular-nums text-white placeholder:text-slate-500 outline-none focus:border-amber-400"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#060A14] px-3.5 text-xs sm:text-sm font-mono tabular-nums tracking-normal text-white placeholder:text-slate-500 shadow-inner outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
                     />
                   </div>
                 </div>
@@ -818,7 +829,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-8 mb-6 text-center text-xs text-slate-500">
           <div className="flex items-center justify-center gap-1.5 text-slate-400 mb-1">
-            <ShieldCheck className="h-4 w-4 text-amber-400" />
+            <MediopointLogo className="h-4 w-4 rounded-md" />
             <span className="font-semibold text-white">{BRAND_NAME} Neutral Escrow Bridge</span>
           </div>
           <p className="text-[11px]">
